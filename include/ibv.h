@@ -3,6 +3,10 @@ struct rem_mem_t {
     uint32_t rkey;
 };
 
+#define RC_QP_ACTIVE    0
+#define RC_QP_BLOCKED   1
+#define RC_QP_ERROR     2
+
 struct rc_qp_t {
     struct ibv_qp *qp;          // RC QP
     uint64_t signaled_wr_id;    // ID of signaled WR (to avoid overflow)

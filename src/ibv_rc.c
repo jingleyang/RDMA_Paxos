@@ -70,31 +70,120 @@ int rc_qp_create(ib_ep_t* ep )
     return 0;
 }
 
-RSM_Op(req_msg){
-    log_entry_t* new_entry = SRV_DATA->log->entries + SRV_DATA->log->end;
-    SRV_DATA->log->end = LOG_ENTRY_SIZE + SRV_DATA->log->end;
-    new_entry->idx = end / LOG_ENTRY_SIZE;
-    
-    new_entry->data_size = con_msg->data_size;
-    memcpy(new_entry->data, req_msg->data, req_msg->data_size;);
+void RDMA_write(void* buf, uint32_t len, uint32_t offset, uint8_t target){
+    if (target == 0)
+    {
+        uint8_t size = get_group_size(SRV_DATA->config);
+        for (int i = 0; i < size; i++){
+            if (i == SRV_DATA->config.idx){
+                continue;
+            }
+            if (!CID_IS_SERVER_ON(SRV_DATA->config.cid, i)){
+                continue;
+            }
 
-    //store_record();
+            ep = (ib_ep_t*)SRV_DATA->config.servers[i].ep;
 
-    //uint32_t offset
-    uint8_t size = get_group_size(SRV_DATA->config);
-    for (int i = 0; i < size; i++){
-        if (i == SRV_DATA->config.idx){
-            continue;
+            rem_mem_t rm;
+            rm.raddr = ep->rc_ep.rmt_mr.raddr + offset;
+            rm.rkey = ep->rc_ep.rmt_mr.rkey;
+            post_send(i, buf, len, IBDEV->lcl_mr, IBV_WR_RDMA_WRITE, rm);
         }
-        if (!CID_IS_SERVER_ON(SRV_DATA->config.cid, i)){
-            continue;
-        }
+    }else{
+            ep = (ib_ep_t*)SRV_DATA->config.servers[target].ep;
 
-        ep = (ib_ep_t*)SRV_DATA->config.servers[i].ep;
-
-        rem_mem_t rm;
-        rm.raddr = ep->rc_ep.rmt_mr.raddr + offset;
-        rm.rkey = ep->rc_ep.rmt_mr.rkey;
-        //post_send(i, CTRL_QP, &SRV_DATA->ctrl_data->rsid[i], sizeof(uint64_t), IBDEV->lcl_mr[CTRL_QP], IBV_WR_RDMA_READ, SIGNALED, rm, posted_sends);
+            rem_mem_t rm;
+            rm.raddr = ep->rc_ep.rmt_mr.raddr + offset;
+            rm.rkey = ep->rc_ep.rmt_mr.rkey;
+            post_send(i, buf, len, IBDEV->lcl_mr, IBV_WR_RDMA_WRITE, rm);
     }
+}
+
+/* ================================================================== */
+/* Handle RDMA operations */
+
+/**
+ * Post send operation
+ */
+static int 
+post_send( uint8_t server_id,
+           void *buf,
+           uint32_t len,
+           struct ibv_mr *mr,
+           enum ibv_wr_opcode opcode,
+           int signaled,
+           rem_mem_t rm,
+           int *posted_sends )
+{
+    int wait_signaled_wr = 0;
+    uint32_t *send_count_ptr;
+    uint64_t *signaled_wrid_ptr;
+    uint8_t  *qp_state_ptr;
+    ib_ep_t *ep;
+    struct ibv_sge sg;
+    struct ibv_send_wr wr;
+    struct ibv_send_wr *bad_wr;
+
+    /* Define some temporary variables */
+    ep = (ib_ep_t*)SRV_DATA->config.servers[server_id].ep;
+    send_count_ptr = &(ep->rc_ep.rc_qp.send_count);
+    signaled_wrid_ptr = &(ep->rc_ep.rc_qp.signaled_wr_id);
+    qp_state_ptr = &(ep->rc_ep.rc_qp.state);
+    
+    if (RC_QP_BLOCKED == *qp_state_ptr) {
+        /* This QP is blocked; need to wait for the signaled WR */
+        //empty_completion_queue(server_id, qp_id, 1, NULL);
+    }
+    if (RC_QP_ERROR == *qp_state_ptr) {
+        /* This QP is in ERR state - restart it */
+        //rc_qp_restart(ep, qp_id);
+        *qp_state_ptr = RC_QP_ACTIVE;
+        *send_count_ptr = 0;
+    }
+    
+    /* Increment number of posted sends to avoid QP overflow */
+    (*send_count_ptr)++;
+ 
+    /* Local memory */
+    memset(&sg, 0, sizeof(sg));
+    sg.addr   = (uint64_t)buf;
+    sg.length = len;
+    sg.lkey   = mr->lkey;
+ 
+    memset(&wr, 0, sizeof(wr));
+    WRID_SET_SSN(wr.wr_id, ssn);
+    WRID_SET_CONN(wr.wr_id, server_id);
+
+    wr.sg_list    = &sg;
+    wr.num_sge    = 1;
+    wr.opcode     = opcode;
+    if ( (*signaled_wrid_ptr != 0) && 
+        (WRID_GET_TAG(*signaled_wrid_ptr) == 0) ) 
+    {
+        /* Signaled WR was found */
+        *signaled_wrid_ptr = 0;
+    }
+    if ( (*send_count_ptr == IBDEV->rc_max_send_wr >> 2) && (*signaled_wrid_ptr == 0) ) {
+        /* A quarter of the Send Queue is full; add a special signaled WR (send completion event for this WR) */
+        wr.send_flags |= IBV_SEND_SIGNALED;
+        WRID_SET_TAG(wr.wr_id);    // special mark
+        *signaled_wrid_ptr = wr.wr_id;
+        *send_count_ptr = 0;
+    }
+    else if (*send_count_ptr == 3 * IBDEV->rc_max_send_wr >> 2) {
+        if (*signaled_wrid_ptr != 0) {
+            /* The Send Queue is full; need to wait for the signaled WR */
+            wait_signaled_wr = 1;
+        }
+    }
+    if (signaled) {
+        wr.send_flags |= IBV_SEND_SIGNALED;
+    }  
+    wr.wr.rdma.remote_addr = rm.raddr;
+    wr.wr.rdma.rkey        = rm.rkey;
+    ibv_post_send(ep->rc_ep.rc_qp.qp, &wr, &bad_wr);
+    
+    //empty_completion_queue(server_id, qp_id, wait_signaled_wr, posted_sends);
+    
+    return 0;
 }

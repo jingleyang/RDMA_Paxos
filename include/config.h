@@ -3,12 +3,14 @@
 /** 
  * BITMASK - is a bitmask with a bit set for every on servers
  */
-struct cid_t {
+struct cid_t
+{
 	uint8_t size;
     uint32_t bitmask;
 };
 
-struct server_config_t {
+struct server_config_t 
+{
 	cid_t cid;         		/* configuration identifier */
 
     server_t *servers;      /* array with info for each server */
@@ -17,6 +19,7 @@ struct server_config_t {
     uint8_t len;            /* fixed length of configuration array */
 };
 
-uint8_t get_group_size(server_config_t config ){
+uint8_t get_group_size(server_config_t config)
+{
     return config.cid.size;
 }
