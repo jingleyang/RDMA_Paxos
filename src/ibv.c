@@ -29,7 +29,19 @@ int init_ib_device()
         return 1;
     }
 
+    /* Initialize IB UD connection */
+    ud_init();
+
     return 0; 
+}
+
+/**
+ * Post UD receives
+ * Note: After this call, we may receive messages over UD
+ */
+int start_ib_ud()
+{
+    return ud_start();
 }
 
 int init_ib_srv_data(void *data)
@@ -43,11 +55,6 @@ int init_ib_srv_data(void *data)
     }
     
     return 0;
-}
-
-int init_ib_rc()
-{
-    return rc_init();
 }
 
 /** 
@@ -131,4 +138,22 @@ error:
         ibv_close_device(dev_context);
     }
     return NULL; 
+}
+
+/* ================================================================== */
+/* Starting a server */
+
+uint8_t ib_poll_ud_queue()
+{
+    return ud_get_message();
+}
+
+int ib_join_cluster()
+{
+    return ud_join_cluster();
+}
+
+int ib_exchange_rc_info()
+{
+    return ud_exchange_rc_info();
 }

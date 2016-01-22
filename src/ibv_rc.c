@@ -71,6 +71,9 @@ int rc_qp_create(ib_ep_t* ep )
 }
 
 void RDMA_write(void* buf, uint32_t len, uint32_t offset, uint8_t target){
+    rem_mem_t rm;
+    rm.raddr = ep->rc_ep.rmt_mr.raddr + offset;
+    rm.rkey = ep->rc_ep.rmt_mr.rkey;
     if (target == 0)
     {
         uint8_t size = get_group_size(SRV_DATA->config);
@@ -84,17 +87,11 @@ void RDMA_write(void* buf, uint32_t len, uint32_t offset, uint8_t target){
 
             ep = (ib_ep_t*)SRV_DATA->config.servers[i].ep;
 
-            rem_mem_t rm;
-            rm.raddr = ep->rc_ep.rmt_mr.raddr + offset;
-            rm.rkey = ep->rc_ep.rmt_mr.rkey;
             post_send(i, buf, len, IBDEV->lcl_mr, IBV_WR_RDMA_WRITE, rm);
         }
     }else{
             ep = (ib_ep_t*)SRV_DATA->config.servers[target].ep;
 
-            rem_mem_t rm;
-            rm.raddr = ep->rc_ep.rmt_mr.raddr + offset;
-            rm.rkey = ep->rc_ep.rmt_mr.rkey;
             post_send(i, buf, len, IBDEV->lcl_mr, IBV_WR_RDMA_WRITE, rm);
     }
 }
@@ -157,14 +154,13 @@ post_send( uint8_t server_id,
     wr.sg_list    = &sg;
     wr.num_sge    = 1;
     wr.opcode     = opcode;
-    if ( (*signaled_wrid_ptr != 0) && 
-        (WRID_GET_TAG(*signaled_wrid_ptr) == 0) ) 
+    if ( (*signaled_wrid_ptr != 0) && (WRID_GET_TAG(*signaled_wrid_ptr) == 0) ) 
     {
         /* Signaled WR was found */
         *signaled_wrid_ptr = 0;
     }
     if ( (*send_count_ptr == IBDEV->rc_max_send_wr >> 2) && (*signaled_wrid_ptr == 0) ) {
-        /* A quarter of the Send Queue is full; add a special signaled WR (send completion event for this WR) */
+        /* A quarter of the Send Queue is full, add a special signaled WR*/
         wr.send_flags |= IBV_SEND_SIGNALED;
         WRID_SET_TAG(wr.wr_id);    // special mark
         *signaled_wrid_ptr = wr.wr_id;
@@ -183,7 +179,7 @@ post_send( uint8_t server_id,
     wr.wr.rdma.rkey        = rm.rkey;
     ibv_post_send(ep->rc_ep.rc_qp.qp, &wr, &bad_wr);
     
-    //empty_completion_queue(server_id, qp_id, wait_signaled_wr, posted_sends);
+    empty_completion_queue(server_id, qp_id, wait_signaled_wr, posted_sends);
     
     return 0;
 }

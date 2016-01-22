@@ -1,3 +1,7 @@
+struct ud_ep_t {
+    uint16_t lid;
+};
+
 struct rem_mem_t {
     uint64_t raddr;
     uint32_t rkey;
@@ -31,6 +35,11 @@ struct ib_device_t{
     struct ibv_device_attr ib_dev_attr;
     uint16_t pkey_index;    
     uint8_t port_num;       // port number
+
+    /* Multicast */
+    struct ibv_ah *ib_mcast_ah;
+    union ibv_gid mgid;
+    uint16_t      mlid;
 
     /* QPs for inter-server communication - RC */
     struct ibv_pd *rc_pd;

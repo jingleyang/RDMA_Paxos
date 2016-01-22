@@ -1,5 +1,12 @@
 #include <db.h>
 
+uint64_t vstol(uint64_t term, uint64_t idx){
+    uint64_t result = idx&0xFFFFFFFFl;
+    uint64_t temp = term&0xFFFFFFFFl;
+    result += temp<<32;
+    return result;
+};
+
 int retrieve_record(db* db_p,size_t key_size,void* key_data,size_t* data_size,void** data){
     int ret=1;
     if(NULL == db_p || NULL == db_p->bdb_ptr){
