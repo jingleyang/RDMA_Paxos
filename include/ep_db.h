@@ -5,3 +5,4 @@ struct ep_t {
                             this endpoint that I answer; ignore requests 
                             with lower IDs */
 };
+typedef struct ep_t ep_t;

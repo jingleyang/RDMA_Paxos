@@ -1,20 +1,18 @@
 struct log_entry_t {
     int result[MAX_SERVER_COUNT];
-    uint64_t committed;
-    uint64_t idx;
-    uint64_t term;
-    uint16_t clt_id;    /* clt_id is the client’s unique identifier */
-    uint64_t req_id;    /* req_id is a unique identifier for this request
-                           Its purpose is to allow the primary cohort to recognize duplicate requests and avoid re-executing them */
 
-    union {
-        sm_cmd_t   cmd;
-    } data; /* The entry data */
+    view_stamp msg_vs;
+    view_stamp req_canbe_exed;
+    node_id_t node_id;
+    size_t data_size;
+    char data[0];
 };
+typedef struct log_entry_t log_entry_t;
 
 #define LOG_SIZE  16384*PAGE_SIZE
 struct log_t
 {
+    uint64_t read;
     uint64_t write; 
     uint64_t end;
     uint64_t tail;
@@ -23,6 +21,7 @@ struct log_t
     
     uint8_t entries[0];
 };
+typedef struct log_t log_t;
 
 /* ================================================================== */
 /* Static functions to handle the log */
@@ -40,6 +39,17 @@ static log_t* log_new()
     log->tail = log->len;
 
     return log;
+}
+
+/**
+ * Free log
+ */
+static void log_free(log_t* log)
+{
+    if (NULL != log) {
+        free(log);
+        log = NULL;
+    }
 }
 
 /* ================================================================== */
@@ -88,10 +98,8 @@ static log_entry_t* log_get_entry(log_t* log, uint64_t *offset)
     return (log_entry_t*)(log->entries + *offset); 
 }
 
-static uint64_t log_append_entry(log_t* log, uint64_t term, uint64_t req_id, uint16_t clt_id, void *data)
+static uint64_t log_append_entry(consensus_component* comp, size_t data_size, void* data, view_stamp* vs)
 {
-    sm_cmd_t *cmd = (sm_cmd_t*)data;
-
     uint64_t offset = log->tail;
     log_entry_t *last_entry = log_get_entry(log, &offset);
     uint64_t idx = last_entry ? last_entry->idx + 1 : 1;
@@ -99,18 +107,18 @@ static uint64_t log_append_entry(log_t* log, uint64_t term, uint64_t req_id, uin
     /* Create new entry */
     log_entry_t *entry = log_add_new_entry(log);
 
-    entry->idx     = idx;
-    entry->term    = term;
-    entry->req_id  = req_id;
-    entry->clt_id  = clt_id;
+    entry->node_id = comp->node_id;
+    entry->req_canbe_exed.view_id = comp->highest_to_commit_vs->view_id;
+    entry->req_canbe_exed.req_id = comp->highest_to_commit_vs->req_id;
+    entry->data_size = data_size;
+    entry->msg_vs = *vs;
 
     if (!log_fit_entry_header(log, log->end)) 
     {
         log->end = 0;
     }
 
-    entry->data.cmd.len = cmd->len;
-    memcpy(entry->data.cmd.cmd, cmd->cmd, entry->data.cmd.len);
+    memcpy(entry->data,data,data_size);
     
     log->tail = log->end;
     log->end += log_entry_len(entry);

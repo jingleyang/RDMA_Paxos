@@ -1,39 +1,40 @@
+extern FILE *log_fp;
+
 /* InfiniBand device */
 extern ib_device_t *ib_device;
 #define IBDEV ib_device
 #define SRV_DATA ((server_data_t*)ib_device->udata)
-#define CLT_DATA ((client_data_t*)ib_device->udata)
 
 struct ibv_wc *wc_array;
 
 /* ================================================================== */
 /* Init and cleaning up */
 
-int ud_init( uint32_t receive_count )
+int ud_init(uint32_t receive_count)
 {
     int rc;
 
     rc = ud_prerequisite(receive_count);
     if (0 != rc) {
-        //Cannot create UD prerequisite
+        error_return(1, log_fp, "Cannot create UD prerequisite\n");
     }
        
     /* Register memory */
     rc = ud_memory_reg();
     if (0 != rc) {
-        //Cannot register memory
+        error_return(1, log_fp, "Cannot register memory\n");
     }
        
     /* Create QP to listen on client requests */
     rc = ud_qp_create();
     if (0 != rc) {
-        //Cannot create listen QP
+        error_return(1, log_fp, "Cannot create listen QP\n");
     }
     
     /* Create mcast Address Handle (AH) */
     rc = mcast_ah_create();
     if (0 != rc) {
-        //Cannot create AH
+        error_return(1, log_fp, "Cannot create AH\n");
     }
     
     /* Allocate memory for prefetching  UD requests */
@@ -57,7 +58,7 @@ struct ibv_ah* ud_ah_create(uint16_t dlid)
 
     ah = ibv_create_ah(IBDEV->ud_pd, &ah_attr);
     if (NULL == ah) {
-        //ibv_create_ah() failed
+        error(log_fp, "ibv_create_ah() failed because %s\n", strerror(errno));
         return NULL;
     }
     
@@ -85,6 +86,8 @@ static int mcast_ah_create()
     
     ah = ibv_create_ah(IBDEV->ud_pd, &ah_attr);
     if (NULL == ah) {
+        error_return(1, log_fp, "ibv_create_ah() failed because %s\n", 
+                     strerror(errno));
     }
     
     IBDEV->ib_mcast_ah = ah;
@@ -109,29 +112,32 @@ void ud_ah_destroy(struct ibv_ah* ah)
     return;
 }
 
-static int ud_prerequisite(uint32_t receive_count )
+static int ud_prerequisite(uint32_t receive_count)
 {
     /* Allocate the UD protection domain */
     IBDEV->ud_pd = ibv_alloc_pd(IBDEV->ib_dev_context);
     if (NULL == IBDEV->ud_pd) {
+        error_return(1, log_fp, "Cannot allocate UD PD\n");
     }
     
     /* Create UD completion queues */
     IBDEV->ud_rcqe = receive_count;
-    IBDEV->ud_rcq = ibv_create_cq(IBDEV->ib_dev_context, IBDEV->ud_rcqe, NULL, NULL, 0);
+    IBDEV->ud_rcq = ibv_create_cq(IBDEV->ib_dev_context, 
+                   IBDEV->ud_rcqe, NULL, NULL, 0);
     if (NULL == IBDEV->ud_rcq) {
-        
+        error_return(1, log_fp, "Cannot create UD Receive CQ\n");
     }
-    IBDEV->ud_scq = ibv_create_cq(IBDEV->ib_dev_context, IBDEV->ud_rcqe, NULL, NULL, 0);
+    IBDEV->ud_scq = ibv_create_cq(IBDEV->ib_dev_context, 
+                                   IBDEV->ud_rcqe, NULL, NULL, 0);
     if (NULL == IBDEV->ud_scq) {
+        error_return(1, log_fp, "Cannot create UD Send CQ\n");
     }
-
     /* Find max inlinre */
     if (0 != find_max_inline(IBDEV->ib_dev_context,
                              IBDEV->ud_pd,
                              &IBDEV->ud_max_inline_data)) 
     {
-        //Cannot find max UD inline data
+        error_return(1, log_fp, "Cannot find max UD inline data\n");
     }
     return 0;
 }
@@ -147,7 +153,7 @@ static int ud_memory_reg()
             malloc(IBDEV->ud_rcqe * sizeof(struct ibv_mr*));
     if ( (NULL == IBDEV->ud_recv_bufs) || 
          (NULL == IBDEV->ud_recv_mrs) ) {
-        //Cannot allocate memory for receive buffers
+        error_return(1, log_fp, "Cannot allocate memory for receive buffers");
     }
     for (i = 0; i < IBDEV->ud_rcqe; i++) {
         /* Allocate buffer: cannot be larger than MTU */
@@ -156,7 +162,7 @@ static int ud_memory_reg()
         
         IBDEV->ud_recv_bufs[i] = malloc(mtu_value(IBDEV->mtu));
         if (NULL == IBDEV->ud_recv_bufs[i]) {
-            //Cannot allocate memory for receive buffers
+            error_return(1, log_fp, "Cannot allocate memory for receive buffers");
         }
         memset(IBDEV->ud_recv_bufs[i], 0, mtu_value(IBDEV->mtu));
         IBDEV->ud_recv_mrs[i] = ibv_reg_mr(
@@ -165,23 +171,23 @@ static int ud_memory_reg()
             mtu_value(IBDEV->mtu), 
             IBV_ACCESS_LOCAL_WRITE);
         if (NULL == IBDEV->ud_recv_mrs[i]) {
-           //Cannot register memory for receive buffers
+           error_return(1, log_fp, "Cannot register memory for receive buffers");
         }
     }
     
     /* Register memory for send buffer - reply to requests */
     IBDEV->ud_send_buf = malloc(mtu_value(IBDEV->mtu));
     if (NULL == IBDEV->ud_send_buf) {
-        //Cannot allocate memory for send buffer
+        error_return(1, log_fp, "Cannot allocate memory for send buffer");
     }
     memset(IBDEV->ud_send_buf, 0, mtu_value(IBDEV->mtu)); 
     IBDEV->ud_send_mr = ibv_reg_mr(
         IBDEV->ud_pd, 
-        IBDEV->ud_send_buf, 
+        IBDEV->ud_send_buf,
         mtu_value(IBDEV->mtu), 
         IBV_ACCESS_LOCAL_WRITE);
     if (NULL == IBDEV->ud_send_mr) {
-        //Cannot register memory for send buffer
+        error_return(1, log_fp, "Cannot register memory for send buffer");
     }
     
     return 0;
@@ -199,7 +205,7 @@ static void ud_memory_dereg()
                 continue;
             rc = ibv_dereg_mr(IBDEV->ud_recv_mrs[i]);
             if (0 != rc) {
-                //Cannot deregister memory
+                error(log_fp, "Cannot deregister memory");
             }
         }
         free(IBDEV->ud_recv_mrs);
@@ -220,7 +226,7 @@ static void ud_memory_dereg()
     if (NULL != IBDEV->ud_send_mr) {
         rc = ibv_dereg_mr(IBDEV->ud_send_mr);
         if (0 != rc) {
-            //Cannot deregister memory
+            error(log_fp, "Cannot deregister memory");
         }
     }
     if (NULL != IBDEV->ud_send_buf) {
@@ -267,7 +273,7 @@ static int ud_qp_create()
                           &IBDEV->mgid, 
                           IBDEV->mlid);
     if (0 != rc) {
-        //ibv_attach_mcast() failed
+        error_return(1, log_fp, "ibv_attach_mcast() failed because %s\n", strerror(rc));
     }
 
     /* move the UD QP into the INIT state */
@@ -280,10 +286,10 @@ static int ud_qp_create()
     rc = ibv_modify_qp(qp, &attr, IBV_QP_STATE | IBV_QP_PKEY_INDEX
                        | IBV_QP_PORT | IBV_QP_QKEY); 
     if (0 != rc) {
-        //ibv_modify_qp failed
+        error_return(1, log_fp, "ibv_modify_qp failed because %s\n", strerror(rc));
     }
 
-    /* Move listen QP to RTR */
+    /* Move listen QP to RTR (Ready To Receive state)*/
     attr.qp_state = IBV_QPS_RTR;
 
     rc = ibv_modify_qp(qp, &attr, IBV_QP_STATE); 
@@ -291,7 +297,7 @@ static int ud_qp_create()
         error_return(1, log_fp, "ibv_modify_qp failed because %s\n", strerror(rc));
     }
 
-    /* Move listen QP to RTS */
+    /* Move listen QP to RTS (Ready To Send state)*/
     memset(&attr, 0, sizeof(attr));
     attr.qp_state = IBV_QPS_RTS;
     
@@ -302,7 +308,7 @@ static int ud_qp_create()
     
     rc = ibv_modify_qp(qp, &attr, IBV_QP_STATE | IBV_QP_SQ_PSN); 
     if (0 != rc) {
-        //ibv_modify_qp failed
+        error_return(1, log_fp, "ibv_modify_qp failed because %s\n", strerror(rc));
     }
         
     
@@ -378,7 +384,7 @@ int ud_start()
     /* Post receives */
     rc = ud_post_receives();
     if (0 != rc) {
-        //Cannot post receives
+        error_return(1, log_fp, "Cannot post receives\n");
     }
 
     return 0;
@@ -408,12 +414,12 @@ static int ud_post_receives()
     
     rc = ibv_post_recv(IBDEV->ud_qp, wr_array, &bad_wr);
     if (0 != rc) {
-        //ibv_post_recv failed
+        error_return(1, log_fp, "ibv_post_recv failed because %s\n", strerror(rc));
     }
     return 0;
 }
 
-static int ud_post_one_receive( int idx )
+static int ud_post_one_receive(int idx)
 {
     int rc;
     struct ibv_recv_wr *bad_wr = NULL;
@@ -432,7 +438,7 @@ static int ud_post_one_receive( int idx )
     
     rc = ibv_post_recv(IBDEV->ud_qp, &wr, &bad_wr);
     if (0 != rc) {
-        //ibv_post_recv failed
+        error_return(1, log_fp, "ibv_post_recv failed because %s\n", strerror(rc));
     }
     return 0;
 }
@@ -476,7 +482,7 @@ static int ud_send_message(ud_ep_t *ud_ep, uint32_t len )
      
     rc = ibv_post_send(IBDEV->ud_qp, &wr, &bad_wr);
     if (0 != rc) {
-        //ibv_post_send failed
+        error_return(1, log_fp, "ibv_post_send failed because %s\n", strerror(rc));
     }
 
     /* Wait for send operation to complete */
@@ -488,12 +494,13 @@ static int ud_send_message(ud_ep_t *ud_ep, uint32_t len )
     } while (num_comp == 0);
       
     if (num_comp < 0) {
-        //ibv_poll_cq() failed
+       error_return(1, log_fp, "ibv_poll_cq() failed\n");
     }
        
     /* Verify the completion status */
     if (wc.status != IBV_WC_SUCCESS) {
-
+    error_return(1, log_fp, "Failed status %s (%d) for wr_id %d\n", 
+                 ibv_wc_status_str(wc.status), wc.status, (int)wc.wr_id);
     }
 
     return 0;
@@ -552,7 +559,8 @@ static int mcast_send_message( uint32_t len )
      
     rc = ibv_post_send(IBDEV->ud_qp, &wr, &bad_wr);
     if (0 != rc) {
-        //ibv_post_send failed
+        error_return(1, log_fp, "ibv_post_send failed because \"%s\"\n", 
+                    strerror(rc));
     }
 
     /* Wait for send operation to complete */
@@ -569,7 +577,8 @@ static int mcast_send_message( uint32_t len )
        
     /* Verify the completion status */
     if (wc.status != IBV_WC_SUCCESS) {
-        //
+       error_return(1, log_fp, "Failed status %s (%d) for wr_id %d\n", 
+                 ibv_wc_status_str(wc.status), wc.status, (int)wc.wr_id);
     }
 
     return 0;
@@ -580,13 +589,13 @@ uint8_t ud_get_message()
     int ne, i, j;
     uint8_t type = MSG_NONE, prev_type = MSG_NONE;
     struct ibv_wc *wc = wc_array;
-    uint16_t wc_count = 0, rd_wr_count = 0;
+    uint16_t wc_count = 0;
     ud_hdr_t *ud_hdr;
 
 get_message:    
     ne = ibv_poll_cq(IBDEV->ud_rcq, 1, wc);
     if (ne < 0) {
-        //Couldn't poll completion queue
+        error_return(MSG_ERROR, log_fp, "Couldn't poll completion queue\n");
     }
     if (ne == 0) {
         goto handle_messages;
@@ -611,8 +620,7 @@ get_message:
         //dump_bytes(log_fp, ud_hdr, wc->byte_len - 40, "received bytes");
         /* Increase WC count */
         wc_count++; wc++;
-        /* Only the server can receive READ or WRITE requests */
-        if (IBV_SERVER != IBDEV->ulp_type) goto handle_messages;
+
         /* Check the type of the operation */
         type = ud_hdr->type;
         if (MSG_NONE == prev_type) {
@@ -625,31 +633,15 @@ get_message:
         goto get_message;
     }
 
-handle_messages:    
-    /* Handle read/write requests */
-    if (rd_wr_count) {
-        /* Simulate a server's CPU failure; the NIC & memory still works */
-        //if (!is_leader()) {
-        //    info_wtime(log_fp, "Received message over UD: type=%"PRIu8"\n", type);
-        //    sleep(10);
-        //    return type;
-        //}
+handle_messages:
 
-        /* Rearm */
-        for (i = 0; i < rd_wr_count; i++) {
-            ud_post_one_receive(wc_array[i].wr_id);
-        }
-    }
     /* Handle other messages */    
-    if (wc_count > rd_wr_count) {
+    if (wc_count > 0 /*rd_wr_count*/) {
         /* There is one more message */
         ud_hdr = (ud_hdr_t*)
                 (IBDEV->ud_recv_bufs[wc_array[wc_count-1].wr_id] + 40);
         if (IBV_SERVER == IBDEV->ulp_type) {
             type = handle_message_from_client(&wc_array[wc_count-1], ud_hdr);
-        }
-        else if (IBV_CLIENT == IBDEV->ulp_type) {
-            type = handle_message_from_server(&wc_array[wc_count-1], ud_hdr);
         }
         /* Rearm receive operation */
         ud_post_one_receive(wc_array[wc_count-1].wr_id);
@@ -658,6 +650,8 @@ handle_messages:
     
     return type;
 }
+
+
 
 /**
  * Handle UD messages incoming from clients 
@@ -679,7 +673,7 @@ static uint8_t handle_message_from_client(struct ibv_wc *wc, ud_hdr_t *ud_hdr)
             /* Handle reply */
             rc = handle_server_join_request(wc, ud_hdr);
             if (0 != rc) {
-                //The initiator cannot handle server join requests
+                error(log_fp, "The initiator cannot handle server join requests\n");
                 type = MSG_ERROR;
             }
             break;
@@ -691,12 +685,11 @@ static uint8_t handle_message_from_client(struct ibv_wc *wc, ud_hdr_t *ud_hdr)
             type = MSG_NONE;
             rc = handle_rc_syn(wc, (rc_syn_t*)ud_hdr);
             if (0 != rc) {
-                //Cannot handle RC_SYN msg
+                error(log_fp, "Cannot handle RC_SYN msg\n");
                 type = MSG_ERROR;
             }
             break;
         }
-        case RC_SYNACK:
         {
             /* Second message of the 3-way handshake protocol */
             //info(log_fp, ">> Received RC_SYNACK from lid%"PRIu16"\n", wc->slid);
@@ -707,7 +700,7 @@ static uint8_t handle_message_from_client(struct ibv_wc *wc, ud_hdr_t *ud_hdr)
                     type = ud_hdr->type;
                     break;
                 }
-                //Cannot handle RC_SYNACK msg
+                error(log_fp, "Cannot handle RC_SYNACK msg\n");
                 type = MSG_ERROR;
             }
             break;
@@ -723,7 +716,7 @@ static uint8_t handle_message_from_client(struct ibv_wc *wc, ud_hdr_t *ud_hdr)
                     type = ud_hdr->type;
                     break;
                 }
-                //Cannot handle RC_ACK msg
+                error(log_fp, "Cannot handle RC_ACK msg\n");
                 type = MSG_ERROR;
             }
             break;
@@ -743,45 +736,6 @@ static uint8_t handle_message_from_client(struct ibv_wc *wc, ud_hdr_t *ud_hdr)
     }
     return type;
 }
-
-/**
- * Handle UD messages incoming from servers 
- */
-static uint8_t handle_message_from_server( struct ibv_wc *wc, ud_hdr_t *ud_hdr )
-{
-    int rc;
-    uint8_t type = ud_hdr->type;
-    //info_wtime(log_fp, "MSG from srv (%"PRIu8")\n", type);
-    switch(type) {
-        case CSM_REPLY:
-        {
-            //dump_bytes(log_fp, ud_hdr, wc->byte_len - 40, "received bytes");
-            /* CSM reply from server */
-            //info(log_fp, ">> Received CSM reply from server with lid%"
-            //    PRIu16"\n", wc->slid);
-            /* Handle reply */
-            rc = handle_csm_reply(wc, (client_rep_t*)ud_hdr);
-            if (0 != rc) {
-                //Cannot handle reply from server
-                type = MSG_ERROR;
-            }
-            break;
-        }
-        case CFG_REPLY:
-        {
-            /* PSM reply from server */
-            break;
-        }
-        default:
-        {
-            //debug(log_fp, "Unknown message\n");
-        }
-
-    }
-    return type;
-}
-
-#endif 
 
 /* ================================================================== */
 /* Joining the group */
@@ -804,19 +758,12 @@ int ud_join_cluster()
 /**
  * Handle a join request from a server
  */
-static int handle_server_join_request( struct ibv_wc *wc, ud_hdr_t *request )
+static int handle_server_join_request(struct ibv_wc *wc, ud_hdr_t *request)
 {
     int rc;
-    uint8_t i, size, empty;
+    uint8_t i, size;
     
-    /* Case 1: Transitional configuration */
-    if (CID_STABLE != SRV_DATA->config.cid.state) {
-        /* Wait until the resize is done; 
-         * the join request will repeat later */
-        return 0;
-    }
-    size = SRV_DATA->config.cid.size[0];
-    empty = size;
+    size = SRV_DATA->config.cid.size;
     
     /* Find the ep that send this request; look in the EP DB */
     ep_t *ep = ep_search(&SRV_DATA->endpoints, wc->slid);
@@ -836,9 +783,7 @@ static int handle_server_join_request( struct ibv_wc *wc, ud_hdr_t *request )
                 the configuration; check if the JOIN request is repeated
                 TODO should get last_req_id from a protocol SM !!! */
                 if (ep->last_req_id == request->id) {
-                    /* I received this request before; 
-                    check if the entry is committed */
-                    if (!ep->committed) return 0;
+                    /* I received this request before */
                     /* Probably the reply got lost (UD) */
                     rc = ud_send_clt_reply(wc->slid, request->id, CONFIG);
                     if (0 != rc) {
@@ -846,56 +791,11 @@ static int handle_server_join_request( struct ibv_wc *wc, ud_hdr_t *request )
                     }
                     return 0;
                 }
-                /* New JOIN request; ingnore
-                Case 2: Server fails, recovers and joins before leader 
-                suspects the failure */
                 return 0;
             }
             continue;
         }
-        empty = i;
     }
-    /* If (emtpy != size) Case 3: Empty place (i.e., BITMASK < 2^size-1) 
-    else 
-    Case 4: The group is full (i.e., BITMASK = 2^size-1) - upsize 
-        i.   [size,0,STABLE,2^size-1] -> [size,size+1,EXTENDED,2^(size+1)-1]
-        ii.  [size,size+1,EXTENDED,2^(size+1)-1] -> [size,size+1,TRANSIT,2^(size+1)-1]
-        iii. [size,size+1,TRANSIT,2^(size+1)-1] -> [size+1,0,STABLE,2^(size+1)-1] */
-    cid_t old_cid = SRV_DATA->config.cid;
-    CID_SERVER_ADD(SRV_DATA->config.cid, empty);
-    if (empty == size) {
-        /* Add an extra server; the group is later up-sized */
-        SRV_DATA->config.cid.state = CID_EXTENDED;
-        SRV_DATA->config.cid.size[1] = SRV_DATA->config.cid.size[0] + 1;
-        SRV_DATA->config.cid.epoch++;
-    }
-    SRV_DATA->config.req_id = request->id;
-    SRV_DATA->config.clt_id = wc->slid;
-    PRINT_CONF_TRANSIT(old_cid, SRV_DATA->config.cid);
-    
-    /* Initialize the new server */
-    server_t *new_server = &SRV_DATA->config.servers[empty];
-    ib_ep = (ib_ep_t*)new_server->ep;
-    wc_to_ud_ep(&ib_ep->ud_ep, wc);
-    ib_ep->rc_connected = 0;
-    new_server->fail_count = 0;
-    new_server->next_lr_step = LR_GET_WRITE;
-    new_server->send_flag = 1;
-    new_server->send_count = 0;
-    SRV_DATA->ctrl_data->vote_ack[empty] = SRV_DATA->log->len;
-    SRV_DATA->ctrl_data->read_offsets[empty] = SRV_DATA->log->head;
-    
-    /* Update request ID for this LID; TODO use protocol SM */
-    ep->last_req_id = request->id;
-    
-    /* Append CONFIG entry */
-    ep->cid_idx = log_append_entry(SRV_DATA->log, 
-            SID_GET_TERM(SRV_DATA->cached_sid), request->id, 
-            wc->slid, CONFIG, &SRV_DATA->config.cid);
-    //INFO_PRINT_LOG(log_fp, SRV_DATA->log);
-    
-    /* Set the status of the new entry as uncommitted */
-    ep->committed = 0;
               
     return 0;
 }
@@ -909,13 +809,7 @@ static void handle_server_join_reply(struct ibv_wc *wc, reconf_rep_t *reply)
     IBDEV->request_id++;
     
     SRV_DATA->config.idx = reply->idx;
-    SRV_DATA->config.cid = reply->cid;
-    /* Server set its head offset to the one of the leader */
-    SRV_DATA->log->head = reply->head;
-    /* Server considers only CONFIG entries with larger indexes */
-    SRV_DATA->config.cid_idx = reply->cid_idx;  
-    /* Start looking for CONFIG entries starting with the head offset */
-    SRV_DATA->config.cid_offset = SRV_DATA->log->head;
+    SRV_DATA->config.cid = reply->cid; 
 }
 
 /* ================================================================== */
@@ -939,43 +833,17 @@ int ud_exchange_rc_info()
     request->hdr.type      = RC_SYN;
     request->log_rm.raddr  = (uint64_t)SRV_DATA->log;
     request->log_rm.rkey   = IBDEV->lcl_mr[LOG_QP]->rkey;
-    request->ctrl_rm.raddr = (uint64_t)SRV_DATA->ctrl_data;
-    request->ctrl_rm.rkey  = IBDEV->lcl_mr[CTRL_QP]->rkey;
     request->idx           = SRV_DATA->config.idx;
     
-    request->size = get_extended_group_size(SRV_DATA->config);
-    for (i = 0, j = 0; i < request->size; i++, j += 2) {
+    request->size = get_group_size(SRV_DATA->config);
+    for (i = 0, j = 0; i < request->size; i++, j += 1) {
         ep = (ib_ep_t*)SRV_DATA->config.servers[i].ep;
         qpns[j] = ep->rc_ep.rc_qp[LOG_QP].qp->qp_num;
-        //qpns[j+1] = ep->rc_ep.rc_qp[CTRL_QP].qp->qp_num;
     }
-    len += 2*request->size*sizeof(uint32_t);
+    len += request->size*sizeof(uint32_t);
     
     //info(log_fp, ">> Sending RC SYN (mcast)\n");
     return mcast_send_message(len);
-}
-
-/**
- * If RC not known for all servers, send connection request (mcast)
- */
-int ud_update_rc_info()
-{
-    ib_ep_t *ep;
-    uint8_t i, size = get_extended_group_size(SRV_DATA->config);
-    
-    for (i = 0; i < size; i++) {
-        if (i == SRV_DATA->config.idx) continue;
-        if (!CID_IS_SERVER_ON(SRV_DATA->config.cid, i)) continue;
-        ep = (ib_ep_t*)SRV_DATA->config.servers[i].ep;
-        if (!ep->rc_connected) {
-            break;
-        }
-    }
-    if (i == size) {
-        return 0;
-    }
-    text(log_fp, "PERIODIC RC UPDATE\n");    
-    return ud_exchange_rc_info();
 }
 
 /**
@@ -1001,28 +869,24 @@ static int handle_rc_syn(struct ibv_wc *wc, rc_syn_t *msg)
     if (0 == ep->rc_connected) {
         /* Create UD endpoint from WC */
         wc_to_ud_ep(&ep->ud_ep, wc);
-        
-        /* Set log and ctrl memory region info */
+        text(log_fp, "New SYN msg from server %"PRIu8" with lid=%"PRIu16"\n", 
+                msg->idx, ep->ud_ep.lid);
+
+        /* Set log memory region info */
         ep->rc_ep.rmt_mr[LOG_QP].raddr  = msg->log_rm.raddr;
         ep->rc_ep.rmt_mr[LOG_QP].rkey   = msg->log_rm.rkey;
-        ep->rc_ep.rmt_mr[CTRL_QP].raddr = msg->ctrl_rm.raddr;
-        ep->rc_ep.rmt_mr[CTRL_QP].rkey  = msg->ctrl_rm.rkey;
         
         /* Set the remote QPNs */
         ep->rc_ep.rc_qp[LOG_QP].qpn = qpns[2*SRV_DATA->config.idx];
-        ep->rc_ep.rc_qp[CTRL_QP].qpn = qpns[2*SRV_DATA->config.idx+1];
 
-        /* Connect both QPs 
+        /* Connect log QP 
          * Note: at start the LOG QP will not be accessible since the PSN
          * is set to 0 */
-        rc = rc_connect_server(msg->idx, CTRL_QP);
-        if (0 != rc) {
-            //Cannot connect server (CTRL)
-        }
         rc = rc_connect_server(msg->idx, LOG_QP);
         if (0 != rc) {
-            //Cannot connect server (LOG)
+            error_return(1, log_fp, "Cannot connect server (LOG)\n");
         }
+        info_wtime(log_fp, "New connection: #%"PRIu8"\n", msg->idx);
     }    
     
     /* Send RC_SYNACK msg */  
@@ -1034,17 +898,14 @@ static int handle_rc_syn(struct ibv_wc *wc, rc_syn_t *msg)
     reply->hdr.type      = RC_SYNACK;
     reply->log_rm.raddr  = (uint64_t)SRV_DATA->log;
     reply->log_rm.rkey   = IBDEV->lcl_mr[LOG_QP]->rkey;
-    reply->ctrl_rm.raddr = (uint64_t)SRV_DATA->ctrl_data;
-    reply->ctrl_rm.rkey  = IBDEV->lcl_mr[CTRL_QP]->rkey;
     reply->idx           = SRV_DATA->config.idx;
     reply->size          = 1;
     qpns[0] = ep->rc_ep.rc_qp[LOG_QP].qp->qp_num;
-    //qpns[1] = ep->rc_ep.rc_qp[CTRL_QP].qp->qp_num;
-    len += 2*sizeof(uint32_t);
+    len += sizeof(uint32_t);
     //info(log_fp, ">> Sending back RC SYNACK msg\n");
     rc = ud_send_message(&ep->ud_ep, len);
     if (0 != rc) {
-        //Cannot send UD message
+        error_return(1, log_fp, "Cannot send UD message\n");
     }
     return 0;
 }
@@ -1055,7 +916,7 @@ static int handle_rc_syn(struct ibv_wc *wc, rc_syn_t *msg)
  */
 static int handle_rc_synack(struct ibv_wc *wc, rc_syn_t *msg)
 {
-    int rc, ret = 0;
+    int rc;
     ib_ep_t *ep;
     uint32_t *qpns = (uint32_t*)msg->data;
 
@@ -1070,49 +931,25 @@ static int handle_rc_synack(struct ibv_wc *wc, rc_syn_t *msg)
         /* Create UD endpoint from WC */
         wc_to_ud_ep(&ep->ud_ep, wc);
 
-        /* Set log and ctrl memory region info */
+        /* Set log memory region info */
         ep->rc_ep.rmt_mr[LOG_QP].raddr  = msg->log_rm.raddr;
         ep->rc_ep.rmt_mr[LOG_QP].rkey   = msg->log_rm.rkey;
-        ep->rc_ep.rmt_mr[CTRL_QP].raddr = msg->ctrl_rm.raddr;
-        ep->rc_ep.rmt_mr[CTRL_QP].rkey  = msg->ctrl_rm.rkey;
 
         /* Set the remote QPNs */
         ep->rc_ep.rc_qp[LOG_QP].qpn    = qpns[0];
-        ep->rc_ep.rc_qp[CTRL_QP].qpn   = qpns[1];
         
         /* Mark RC established */
         ep->rc_connected = 1;
 
-        /* Connect both QPs 
+        /* Connect log QP 
          * Note: at start the LOG QP will not be accessible since the QPN 
          * is set to 0 */
-        rc = rc_connect_server(msg->idx, CTRL_QP);
-        if (0 != rc) {
-            //Cannot connect server (CTRL)
-        }
+
         rc = rc_connect_server(msg->idx, LOG_QP);
         if (0 != rc) {
-            //Cannot connect server (LOG)
+            error_return(1, log_fp, "Cannot connect server (LOG)\n");
         }
 
-        /* Verify the number of RC established; if RC established with at 
-         * least half of the group, then we can proceed further */
-        uint8_t i; 
-        uint8_t connections = 0;
-        uint8_t size = get_group_size(SRV_DATA->config);
-        for (i = 0; i < size; i++) {
-            if (i == SRV_DATA->config.idx) continue;
-            if (!CID_IS_SERVER_ON(SRV_DATA->config.cid, i)) continue;
-            ep = (ib_ep_t*)SRV_DATA->config.servers[i].ep;
-            if (ep->rc_connected) {
-                connections++;
-            }
-        }
-        /* Note: I'm not included */
-        if (connections >= size / 2) {
-        //if (connections > size / 2) {
-            ret = REQ_MAJORITY;
-        }
     }
     
     /* Send RC_ACK msg */
@@ -1126,10 +963,10 @@ static int handle_rc_synack(struct ibv_wc *wc, rc_syn_t *msg)
     //info(log_fp, ">> Sending back RC ACK msg\n");
     rc = ud_send_message(&ep->ud_ep, len);
     if (0 != rc) {
-        //Cannot send UD message
+        error_return(1, log_fp, "Cannot send UD message\n");
     }
     
-    return ret;
+    return REQ_MAJORITY;
 }
 
 /**
@@ -1152,25 +989,60 @@ static int handle_rc_ack(struct ibv_wc *wc, rc_ack_t *msg)
         /* Mark RC established */
         ep->rc_connected = 1;
         
-        /* Verify the number of RC established; if RC established with at 
-         * least half of the group, then we can proceed further */
-        uint8_t connections = 0;
-        uint8_t size = get_group_size(SRV_DATA->config);
-        for (i = 0; i < size; i++) {
-            if (i == SRV_DATA->config.idx) continue;
-            if (!CID_IS_SERVER_ON(SRV_DATA->config.cid, i)) continue;
-            ep = (ib_ep_t*)SRV_DATA->config.servers[i].ep;
-            if (ep->rc_connected) {
-                connections++;
-            }
-        }
-        /* Note: I'm not included */
-        if (connections < size / 2) {
-        //if (connections < size - 1) {
-            return 0;
-        }
         return REQ_MAJORITY;
     }
+    return 0;
+}
+
+/* ================================================================== */
+/* Client messages */
+
+int ud_send_clt_reply(uint16_t lid, uint64_t req_id, uint8_t type)
+{
+    int rc;
+    dare_ib_ep_t *ib_ep;
+    
+    reconf_rep_t *psm_reply;
+    uint32_t len;
+    uint8_t i;
+    
+    /* Find the ep that send this request */
+    dare_ep_t *ep = ep_search(&SRV_DATA->endpoints, lid);
+    if (ep == NULL) {
+        /* No ep with this LID; create a new one */
+        ep = ep_insert(&SRV_DATA->endpoints, lid);
+        ep->last_req_id = 0;
+    }
+    // TODO: you should get the last_req_id from the protocol SM
+    ep->last_req_id = req_id;
+    
+    /* Create reply */
+    switch(type) {
+        case CONFIG:
+            /* Reply to a reconfiguration request */
+            psm_reply = (reconf_rep_t*)IBDEV->ud_send_buf;
+            memset(psm_reply, 0, sizeof(reconf_rep_t));
+            psm_reply->hdr.id = req_id;
+            psm_reply->hdr.type = CFG_REPLY;
+            psm_reply->cid = SRV_DATA->config.cid;
+            psm_reply->cid_idx = ep->cid_idx;
+            uint8_t size = get_group_size(SRV_DATA->config);
+            for (i = 0; i < size; i++) {
+                ib_ep = (ib_ep_t*)SRV_DATA->config.servers[i].ep;
+                if (NULL == ib_ep) continue;
+                if (ib_ep->ud_ep.lid == lid) break;
+            }
+            psm_reply->idx = i;
+            len = sizeof(reconf_rep_t);
+            break;
+    }
+    /* Send reply */
+    rc = ud_send_message(&ep->ud_ep, len);
+    if (0 != rc) {
+        error_return(1, log_fp, "Cannot send message over UD to %"PRIu16"\n", 
+                     lid);
+    }
+    
     return 0;
 }
 
@@ -1187,7 +1059,8 @@ wc_to_ud_ep(ud_ep_t *ud_ep, struct ibv_wc *wc)
     }
     ud_ep->ah = ud_ah_create(ud_ep->lid);
     if (NULL == ud_ep->ah) {
-        //Cannot create AH for LID 
+        error_return(1, log_fp, "Cannot create AH for LID %"PRIu16"\n", 
+                     ud_ep->lid);
     }
     ud_ep->qpn = wc->src_qp;
     return 0;

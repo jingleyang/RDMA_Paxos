@@ -1,72 +1,116 @@
-#define IS_LEADER \
-    ( !IS_NONE && (SID_GET_IDX(data.cached_sid) == data.config.idx) && \
-      (SID_GET_L(data.cached_sid)) )
+FILE *log_fp;
 
+/* server data */
 server_data_t data;
+/* ================================================================== */
+/* libEV events */
 
-int server_init()
-{     
+/* An idle event that polls for different stuff... */
+ev_idle poll_event;
+
+/* ================================================================== */
+
+int server_init(server_input_t *input)
+{
+    /* Initialize data fields to zero */
+    memset(&data, 0, sizeof(server_data_t));
+    
+    /* Store input into server's data structure */
+    data.input = input;
+    
+    /* Set log file handler */
+    log_fp = input->log;
+
     init_server_data();
 
-    init_network();
+    init_network_cb();
 
-    poll();
+    /* Init the poll event */
+    ev_idle_init(&poll_event, poll_cb);
+    ev_set_priority(&poll_event, EV_MAXPRI);
 
+    struct proxy_node_t* proxy = proxy_init(data.config.idx, data.inout.input.srv_type);
+    proxy_run(proxy);
 }
 
-int init_server_data()
+static int init_server_data()
 {
-    //data.config.idx input
+    /* Set up the configuration */
+    data.config.idx = data.input->server_idx;
+    data.config.len = MAX_SERVER_COUNT;
 
     /* Cannot have more than MAX_SERVER_COUNT servers */
     data.config.len = MAX_SERVER_COUNT;
 
-    //data.config.cid.size input
+    data.config.cid.size = data.input->group_size;
+
+    for (i = 0; i < data.input->group_size; i++) {
+        CID_SERVER_ADD(data.config.cid, i);
+    }
+
     data.config.servers = (server_t*)malloc(data.config.len * sizeof(server_t));
     if (NULL == data.config.servers) {
-        //Cannot allocate configuration array
+        error_return(1, log_fp, "Cannot allocate configuration array\n");
     }
     memset(data.config.servers, 0, data.config.len * sizeof(server_t));
 
-    data.log = log_new();
-
-    //struct evconnlistener *evconnlistener_new_bind(struct event_base *base, evconnlistener_cb cb, void *ptr, unsigned flags, int backlog, const struct sockaddr *sa, int socklen);
-    data.listener = evconnlistener_new_bind(data.base, server_on_accept, NULL, LEV_OPT_CLOSE_ON_FREE|LEV_OPT_REUSEABLE, -1, (struct sockaddr*)&data.sys_addr.m_addr, sizeof(data.sys_addr.m_addr));
+    data.endpoints = RB_ROOT;
 
     return 0;
 }
 
+static void free_server_data()
+{
+    ep_db_free(&data.endpoints);
+    
+    /* Free log */
+    log_free(data.log);
+    
+    /* Free servers */
+    if (NULL != data.config.servers) {
+        free(data.config.servers);
+        data.config.servers = NULL;
+    }
+}
+
 /* ================================================================== */
 
-void init_network()
+static void init_network_cb()
 {
-    init_ib_device();
+    int rc;
 
-    init_ib_srv_data(&data);
+    /* Init IB device */
+    rc = init_ib_device(MAX_SERVER_COUNT);
+    if (0 != rc) {
+        error(log_fp, "Cannot init IB device\n");
+    }
 
-    init_ib_rc();
+    /* Init some IB data for the server */
+    rc = init_ib_srv_data(&data);
+    if (0 != rc) {
+        error(log_fp, "Cannot init IB SRV data\n");
+    }
+
+    /* Init IB RC */
+    rc = init_ib_rc();
+        if (0 != rc) {
+        error(log_fp, "Cannot init IB RC\n");
+    }
 
     /* Start IB UD */
     rc = start_ib_ud();
     if (0 != rc) {
-        //Cannot start IB UD
+        error(log_fp, "Cannot start IB UD\n");
     }
-
-    state |= INIT;
     
     /* Start poll event */   
     ev_idle_start(EV_A_ &poll_event);
     
-    if (SRV_TYPE_JOIN == data.input->srv_type) { //TODO: read from the config file? Or input?
+    if (SRV_TYPE_JOIN == data.input->srv_type) {
         /* Server joining the cluster */
-        join_cluster();
+        join_cluster_cb();
     }
-    else { 
-        /* I'm the only one; I am the leader */
-        //Starting with size=1
-        SID_SET_TERM(data.cached_sid, 1);
-        SID_SET_L(data.cached_sid);
-        SID_SET_IDX(data.cached_sid, 0);
+    else {
     }
 
 }
@@ -75,13 +119,13 @@ void init_network()
  * Send join requests to the cluster
  * Note: the timer is stopped when receiving a JOIN reply (poll_ud)
  */
-static void join_cluster()
+static void join_cluster_cb()
 {
     int rc;
     
     rc = ib_join_cluster();
     if (0 != rc) {
-        //Cannot join cluster
+        error(log_fp, "Cannot join cluster\n");
     }
     
     /* Retransmit after retransmission period */
@@ -101,7 +145,7 @@ static void exchange_rc_info()
     
     rc = ib_exchange_rc_info();
     if (0 != rc) {
-        //Exchanging RC info failed
+        error(log_fp, "Exchanging RC info failed\n");
     }
     
     /* Retransmit after retransmission period */
@@ -112,7 +156,7 @@ static void exchange_rc_info()
 
 /* ================================================================== */
 
-static void poll()
+static void poll_cb()
 {
     polling();  
 }
@@ -129,221 +173,35 @@ static void polling()
 static void poll_ud()
 {
     uint8_t type = ib_poll_ud_queue();
-}
-
-/* ================================================================== */
-
-static void server_on_accept(struct evconnlistener* listener, evutil_socket_t fd, struct sockaddr *address, int socklen, void *arg){
-    socket_pair_t* new_conn = malloc(sizeof(socket_pair_t));
-    memset(new_conn, 0, sizeof(socket_pair_t));
-    struct timeval cur;
-    gettimeofday(&cur, NULL);
-    new_conn->key = gen_key(data.config.idx, data.pair_count++, cur.tv_sec); //TODO: How to generate e key based on the node's idx, pair_count and current time
-    new_conn->p_c = bufferevent_socket_new(data.base, fd, BEV_OPT_CLOSE_ON_FREE);
-    bufferevent_setcb(new_conn->p_c, client_side_on_read, NULL, NULL, new_conn);
-    bufferevent_enable(new_conn->p_c, EV_READ|EV_PERSIST|EV_WRITE);
-
-    int enable = 1;
-    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (void*)&enable, sizeof(enable));
-
-    ep_insert(data.endpoints, new_conn->key);
-
-    //TODO: try to reach a consensus on the request of type P_CONNECT and then send it to the real server
-    client_req_t* conn_server;
-    conn_server->hdr.type = P_CONNECT;
-    conn_server->hdr.req_id = 0;
-    con_server->cmd.len = 0;
-    handle_one_csm_write_request(conn_server, new_conn->key);
-
-    return;
-}
-
-static void real_do_action(client_req_t* req_canbe_exed){
-    for (int i = 0; i < counter; i++)
-    {
-        //TODO: Do we need to retrieve the record from berkeley db?
-        do_action_to_server(req_canbe_exed);
-        req_canbe_exed--;
+    if (MSG_ERROR == type) {
+        error(log_fp, "Cannot get UD message\n");
     }
-}
-
-static void do_action_to_server(client_req_t* req_canbe_exed)
-{
-    switch(req_canbe_exed->hdr.type){
-        case P_CONNECT:
-            do_action_connect(req_canbe_exed);
+    switch(type) {
+        case CFG_REPLY:
+        {
+            info(log_fp, "I got accepted into the cluster: idx=%"PRIu8"\n", 
+                data.config.idx); PRINT_CID_(data.config.cid);
+            
+            /* Start RC discovery */
+            exchange_rc_info_cb()
             break;
-        case P_SEND:
-            do_action_send(req_canbe_exed);
-            break;
-        default:
-            break;
-    }
-    return;
-}
-
-// when we have seen a connect method;
-static void do_action_connect(client_req_t* req_canbe_exed){
-    
-    socket_pair* ret = NULL;
-
-    if(NULL == ret){
-        ret = malloc(sizeof(socket_pair));
-        memset(ret,0,sizeof(socket_pair));
-        ret->key = header->connection_id;
-        ret->counter = 0;
-        MY_HASH_SET(ret,proxy->hash_map);
-    }
-    
-    ret->p_s = bufferevent_socket_new(proxy->base, -1, BEV_OPT_CLOSE_ON_FREE);
-    bufferevent_setcb(ret->p_s, server_side_on_read, NULL, NULL, ret);
-    bufferevent_socket_connect(ret->p_s, (struct sockaddr*)&data.sys_addr.s_addr, proxy->sys_addr.s_sock_len);
-    
-    return;
-}
-
-static void do_action_send(size_t data_size,void* data,void* arg){
-    proxy_node* proxy = arg;
-
-    proxy_send_msg* msg = data;
-    socket_pair* ret = NULL;
-
-    if(NULL == ret){
-        goto do_action_send_exit;
-    }else{
-        if(NULL == ret->p_s){
-            goto do_action_send_exit;
-        }else{
-            bufferevent_write(ret->p_s, msg->data, msg->data_size);
-             /* Needed for answering read requests */
-            data.last_cmt_write_csm_idx = entry->idx;
         }
+        case RC_SYNACK:
+        case RC_ACK:
     }
-
-    /* When new entries are applied, the leader verifies if there are pending read requests */
-    ep_dp_reply_read_req(&data.endpoints, data.last_cmt_write_csm_idx);
-
-do_action_send_exit:
-
-    return;
-}
-
-
-static void client_side_on_read(struct bufferevent* bev, void* arg)
-{
-    socket_pair_t* pair = arg;
-    client_req_t* req_header = NULL;
-    struct evbuffer* input = bufferevent_get_input(bev);
-    size_t len = 0;
-    len = evbuffer_get_length(input);
-    while(len >= sizeof(ud_hdr_t)){
-            req_header = (client_req_t*)malloc(sizeof(ud_hdr_t) + offsetof(sm_cmd_t, cmd);
-            if(NULL == req_header){return;}
-            evbuffer_copyout(input, req_header, sizeof(ud_hdr_t) + offsetof(sm_cmd_t, cmd));
-            size_t data_size = req_header->cmd.len;
-            if(len >= (sizeof(ud_hdr_t) + offsetof(sm_cmd_t, cmd) + data_size)){
-                process_data(bev, data_size, pair->key); 
-            }else{
-                break;
-            }
-            free(req_header);
-            req_header = NULL;
-            len = evbuffer_get_length(input);
-    }
-}
-
-void process_data(struct bufferevent* bev, size_t data_size, uint64_t key){
-    void* msg_buf = (char*)malloc(sizeof(ud_hdr_t) + offsetof(sm_cmd_t, cmd) + data_size);
-    struct evbuffer* evb = bufferevent_get_input(bev);
-    evbuffer_remove(evb, msg_buf, sizeof(ud_hdr_t) + offsetof(sm_cmd_t, cmd) + data_size);
-    client_req_t* client_req = msg_buf;
-    switch(client_req->hdr.type){
-        case CSM_WRITE:
-            handle_one_csm_write_request(client_req, key);
-        case CSM_READ:
-            handle_one_csm_read_request(client_req, key);
-        }
-    return;
-}
-
-static void server_side_on_read(struct bufferevent* bev,void* arg){
-    socket_pair* pair = arg;
-
-    struct evbuffer* input = bufferevent_get_input(bev);
-    struct evbuffer* output = NULL;
-    size_t len = 0;
-    int cur_len = 0;
-    void* msg = NULL;
-    len = evbuffer_get_length(input);
-
-    if(len>0){
-        cur_len = len;
-        if(pair->p_c != NULL){
-            output = bufferevent_get_output(pair->p_c);
-        }
-        if(output != NULL){
-            evbuffer_add_buffer(output,input);
-        }else{
-            evbuffer_drain(input,len);
-        }
-    }
-    return;
-}
-
-static void handle_one_csm_read_request(client_req_t *request, uint64_t key)
-{
-    /* Find the ep that send this request */
-    ep_t *ep = ep_search(data.endpoints, key);
-
-    /* Check the status of the last write request  */
-    if (data.last_cmt_write_csm_idx < data.last_write_csm_idx) {
-        /* There are not-committed write requests; so wait */
-        ep->wait_for_idx = data.last_write_csm_idx;
-        return;
-    }
-
-    /* Create reply */
-    client_rep_t *reply;
-    memset(reply, 0, sizeof(client_rep_t));
-    reply->hdr.id = request->hdr.id;
-    reply->hdr.type = CSM_REPLY;
-    
-    do_action_to_server(request);//TODO
-    
-    /* Send reply */
-    //TODO
-
-}
-
-static void handle_one_csm_write_request(client_req_t *request, uint64_t key)
-{   
-    /* Find the endpoint that send this request */
-    ep_t *ep = ep_search(data.endpoints, key);
-
-    if (ep->last_req_id >= request->hdr.id) {
-        /* Already received this request */
-        //TODO bufferevent
-        return;
-    }
-    ep->last_req_id = request->hdr.id;
-
-    client_req_t* req_canbe_exed = RSM_Op(request);
-
-    real_do_action(req_canbe_exed);
-    //TODO: build the reply and then send it
 }
 
 /* Leader side */
 client_req_t* RSM_Op(client_req_t* request){
     /* update local data and build the entry */
     pthread_spinlock_lock(data.data_lock);
-    data.last_write_csm_idx = log_append_entry(data.log, SID_GET_TERM(data.cached_sid), request->hdr.id, request->hdr.clt_id, &request->cmd);
+    //data.last_write_csm_idx = log_append_entry(data.log, SID_GET_TERM(data.cached_sid), request->hdr.id, request->hdr.clt_id, &request->cmd);
     uint64_t tail_offset = data.log->tail;
     log_entry_t* new_entry = log_get_entry(data.log, &tail_offset);
     pthread_spinlock_unlock(data.data_lock);
 
     /* record the data persistently */
-    uint64_t record_no = vstol(SID_GET_TERM(data.cached_sid), new_entry->idx);
+    uint64_t record_no = vstol();
     request_record_t* record_data = (request_record_t*)malloc(request->cmd.len + sizeof(request_record_t));
     gettimeofday(&record_data->created_time, NULL);
     record_data->bit_map = (1<<data.config.idx);
@@ -354,7 +212,8 @@ client_req_t* RSM_Op(client_req_t* request){
     /* RDMA write this new entry to all the other replicas */
     uint32_t remote_offset = (uint32_t)(offsetof(log_t, entries) + tail_offset);
     uint32_t len = log_entry_len(new_entry);
-    for (int i = 0; i < size; ++i)
+    uint8_t size = get_group_size(SRV_DATA->config);
+    for (uint8_t i = 0; i < size; ++i)
     {
         RDMA_write(i, new_entry, len, remote_offset);
     }
@@ -412,7 +271,7 @@ while (TRUE)
         uint8_t leader = SID_GET_IDX(data.cached_sid);
         int* res;
         *res = 1;
-        RDMA_write(res, sizeof(int), remote_offset, leader);
+        RDMA_write(leader, res, sizeof(int), remote_offset);
 
         data.log->tail = log->end;
         data.log->end += log_entry_len(new_entry);

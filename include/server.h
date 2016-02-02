@@ -9,34 +9,23 @@
 /* The TERM consists of the most significant 55 bits */
 #define SID_GET_TERM(sid) ((sid) >> 9)
 
-struct sys_address_t{
-    struct sockaddr_in m_addr;
-    size_t m_sock_len;
-    struct sockaddr_in s_addr;
-    size_t s_sock_len;
-};
-
-struct socket_pair_t{
-    uint64_t key;
-    struct bufferevent* p_s;
-    struct bufferevent* p_c;
-};
-
-struct ud_hdr_t {
-    uint64_t req_id;
-    uint8_t type;
-};
-
-struct client_req_t {
-    ud_hdr_t hdr;
-    sm_cmd_t cmd;
-};
+#define SID_NULL 0xFF
 
 /* ================================================================== */
 
 struct server_t {
     void *ep;               // endpoint data (network related)
 };
+typedef struct server_t server_t;
+
+struct server_input_t {
+    FILE* log;
+    char* name;
+    uint8_t srv_type;
+    uint8_t group_size;
+    uint8_t server_idx;
+};
+typedef struct server_input_t server_input_t;
 
 struct server_data_t {
 	uint64_t cached_sid;
@@ -61,3 +50,4 @@ struct server_data_t {
     pthread_spinlock_t *data_lock;
     pthread_spinlock_t *exed_lock;
 };
+typedef struct server_data_t server_data_t;
