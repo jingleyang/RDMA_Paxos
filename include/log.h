@@ -100,12 +100,13 @@ static log_entry_t* log_get_entry(log_t* log, uint64_t *offset)
 
 static uint64_t log_append_entry(consensus_component* comp, size_t data_size, void* data, view_stamp* vs)
 {
-    uint64_t offset = log->tail;
-    log_entry_t *last_entry = log_get_entry(log, &offset);
+
+    uint64_t offset = comp->log->tail;
+    log_entry_t *last_entry = log_get_entry(comp->log, &offset);
     uint64_t idx = last_entry ? last_entry->idx + 1 : 1;
     
     /* Create new entry */
-    log_entry_t *entry = log_add_new_entry(log);
+    log_entry_t *entry = log_add_new_entry(comp->log);
 
     entry->node_id = comp->node_id;
     entry->req_canbe_exed.view_id = comp->highest_to_commit_vs->view_id;
@@ -113,15 +114,15 @@ static uint64_t log_append_entry(consensus_component* comp, size_t data_size, vo
     entry->data_size = data_size;
     entry->msg_vs = *vs;
 
-    if (!log_fit_entry_header(log, log->end)) 
+    if (!log_fit_entry_header(comp->log, comp->log->end)) 
     {
-        log->end = 0;
+        comp->log->end = 0;
     }
 
     memcpy(entry->data,data,data_size);
     
-    log->tail = log->end;
-    log->end += log_entry_len(entry);
+    comp->log->tail = comp->log->end;
+    comp->log->end += log_entry_len(entry);
     
     return idx;
 }

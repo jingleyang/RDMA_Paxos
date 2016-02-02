@@ -24,13 +24,13 @@ node* system_initialize(node_id_t node_id,const char* start_mode,void(*user_cb)(
     initialize_node(my_node,user_cb,db_ptr,arg)
 
     my_node->listener = evconnlistener_new_bind(base,replica_on_accept,(void*)my_node,LEV_OPT_CLOSE_ON_FREE|LEV_OPT_REUSEABLE,-1,(struct sockaddr*)&my_node->my_address,sizeof(my_node->my_address));
-
+    //TODO replica never receives a message
 	return my_node;
 }
 
 
 static void handle_msg(node* my_node,struct bufferevent* bev,size_t data_size){
-    DEBUG_ENTER
+
     void* msg_buf = (char*)malloc(SYS_MSG_HEADER_SIZE+data_size);
     if(NULL==msg_buf){
         goto handle_msg_exit;

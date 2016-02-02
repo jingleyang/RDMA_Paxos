@@ -34,10 +34,3 @@
 //#else
 //#define error_return(rc, stream, fmt, ...) return (rc)
 //#endif
-
-#define err_log(args...) do { \
-    struct timeval tv; \
-    gettimeofday(&tv,0); \
-    fprintf(stderr,"%lu.%06lu:",tv.tv_sec,tv.tv_usec); \
-    fprintf(stderr,args); \
-}while(0);

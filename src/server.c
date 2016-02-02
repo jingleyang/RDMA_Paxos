@@ -191,68 +191,6 @@ static void poll_ud()
     }
 }
 
-/* Leader side */
-client_req_t* RSM_Op(client_req_t* request){
-    /* update local data and build the entry */
-    pthread_spinlock_lock(data.data_lock);
-    //data.last_write_csm_idx = log_append_entry(data.log, SID_GET_TERM(data.cached_sid), request->hdr.id, request->hdr.clt_id, &request->cmd);
-    uint64_t tail_offset = data.log->tail;
-    log_entry_t* new_entry = log_get_entry(data.log, &tail_offset);
-    pthread_spinlock_unlock(data.data_lock);
-
-    /* record the data persistently */
-    uint64_t record_no = vstol();
-    request_record_t* record_data = (request_record_t*)malloc(request->cmd.len + sizeof(request_record_t));
-    gettimeofday(&record_data->created_time, NULL);
-    record_data->bit_map = (1<<data.config.idx);
-    record_data->data_size = request->cmd.len;
-    memcpy(record_data->data, request->cmd.data, request->cmd.len);
-    store_record(data.db_ptr, sizeof(record_no), &record_no, sizeof(request_record_t) + record_data->data_size, record_data);
-
-    /* RDMA write this new entry to all the other replicas */
-    uint32_t remote_offset = (uint32_t)(offsetof(log_t, entries) + tail_offset);
-    uint32_t len = log_entry_len(new_entry);
-    uint8_t size = get_group_size(SRV_DATA->config);
-    for (uint8_t i = 0; i < size; ++i)
-    {
-        RDMA_write(i, new_entry, len, remote_offset);
-    }
-    
-
-recheck:
-    for (int i = 0; i < MAX_SERVER_COUNT; i++)
-    {
-        if (new_entry->result[i] == 1)
-        {
-            record_data->bit_map = (record_data->bit_map | (1<<(i + 1));
-            store_record(data.db_ptr, sizeof(record_no), &record_no, sizeof(request_record_t) + record_data->data_size, record_data);
-            new_entry->result[i] == 0;
-        }
-    }
-    if (__builtin_popcountl(record_data->bit_map) >= ((get_group_size(data.config)/2) + 1))
-    {
-        new_entry->result[data.config.idx - 1] = 1;
-        /* we can only execute thins in sequence */ 
-        client_req_t* req_canbe_exed = NULL;
-        uint64_t counter = 0;
-        pthread_spinlock_lock(data.exed_lock);
-execute:        
-        log_entry_t* entry_canbe_exed = (log_entry_t*)(data.log->entries + data.log->write);
-        if (entry_canbe_exed->result[data.config.idx - 1] == 1 && (entry_canbe_exed->idx <= new_entry->idx))
-        {
-            req_canbe_exed->cmd.cmd.size = entry_canbe_exed->data.cmd.size;
-            memcpy(req_canbe_exed->cmd.cmd.data, entry_canbe_exed->data.cmd.cmd, entry_canbe_exed->data.cmd.size);
-            data.log->write += log_get_entry(entry_canbe_exed);
-            req_canbe_exed++;
-            goto execute;
-        }
-        pthread_spinlock_unlock(data.exed_lock);
-        return req_canbe_exed;
-    }else{
-        goto recheck;
-    }
-}
-
 /* replica side */
 while (TRUE)
 {
@@ -288,9 +226,4 @@ while (TRUE)
         }
         //TODO: send req_canbe_exed to server application (maybe wake up another thread to do this)
     }
-}
-
-int is_leader()
-{
-    return IS_LEADER;
 }

@@ -244,13 +244,13 @@ static void proxy_singnal_handler(evutil_socket_t fid,short what,void* arg){
     PROXY_ENTER(proxy);
     int sig;
     sig = event_get_signal((proxy->sig_handler));
-    SYS_LOG(proxy,"PROXY : GET SIGUSR2,Now Check Pending Requests.\n");
+    /* GET SIGUSR2,Now Check Pending Requests */
     real_do_action(proxy);
     PROXY_LEAVE(proxy);
     return;
 }
 
-proxy_node* proxy_init(node_id_t node_id,const char* start_mode)
+proxy_node* proxy_init(node_id_t node_id, const char* start_mode)
 {
     proxy_node* proxy = (proxy_node*)malloc(sizeof(proxy_node));
 
@@ -260,7 +260,7 @@ proxy_node* proxy_init(node_id_t node_id,const char* start_mode)
     struct event_base* base = event_base_new();
     proxy->base = base;
 
-    proxy->db_ptr = initialize_db(proxy->db_name,0);
+    proxy->db_ptr = initialize_db(proxy->db_name, 0);
     proxy->hash_map=NULL;
     //struct evconnlistener *evconnlistener_new_bind(struct event_base *base, evconnlistener_cb cb, void *ptr, unsigned flags, int backlog, const struct sockaddr *sa, int socklen);
     proxy->listener = evconnlistener_new_bind(proxy->base,proxy_on_accept,

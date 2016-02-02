@@ -27,7 +27,6 @@ typedef struct proxy_node_t{
     // libevent part
     struct event_base* base;
     struct evconnlistener* listener;
-    struct timeval recon_period;
     //signal handler
     struct event* sig_handler;
 
@@ -41,12 +40,41 @@ typedef struct proxy_node_t{
     pthread_t p_self;
     struct node_t* con_node;
     struct bufferevent* con_conn;
-    struct event* re_con;
-    FILE* req_log_file;
-    FILE* sys_log_file;
     char* db_name;
     db* db_ptr;
     // for call back of the thread;
     pthread_mutex_t lock;
 
 }proxy_node;
+
+typedef enum proxy_action_t{
+    P_CONNECT=0,
+    P_SEND=1,
+}proxy_action;
+
+typedef struct proxy_msg_header_t{
+    proxy_action action;
+    struct timeval received_time;
+    struct timeval created_time;
+    hk_t connection_id;
+    counter_t counter;
+}proxy_msg_header;
+#define PROXY_MSG_HEADER_SIZE (sizeof(proxy_msg_header))
+
+typedef struct proxy_connect_msg_t{
+    proxy_msg_header header;
+}proxy_connect_msg;
+#define PROXY_CONNECT_MSG_SIZE (sizeof(proxy_connect_msg))
+
+typedef struct proxy_send_msg_t{
+    proxy_msg_header header;
+    size_t data_size;
+    char data[0];
+}__attribute__((packed))proxy_send_msg;
+#define PROXY_SEND_MSG_SIZE(M) (M->data_size+sizeof(proxy_send_msg))
+
+#define MY_HASH_SET(value,hash_map) do{ \
+    HASH_ADD(hh,hash_map,key,sizeof(hk_t),value);}while(0)
+
+#define MY_HASH_GET(key,hash_map,ret) do{\
+ HASH_FIND(hh,hash_map,key,sizeof(hk_t),ret);}while(0) 
