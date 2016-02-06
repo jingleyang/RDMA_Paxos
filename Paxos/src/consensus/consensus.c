@@ -26,7 +26,7 @@ typedef struct consensus_component_t{
     log_t* log;
 }consensus_component;
 
-consensus_component* init_consensus_comp(struct node_t* node,uint32_t node_id,int group_size,view* cur_view,view_stamp* to_commit,view_stamp* committed,view_stamp* highest,user_cb u_cb,void* arg){
+consensus_component* init_consensus_comp(uint32_t node_id,int group_size,view* cur_view,view_stamp* to_commit,view_stamp* committed,view_stamp* highest,user_cb u_cb,void* arg){
     
     consensus_component* comp = (consensus_component*)malloc(sizeof(consensus_component));
     memset(comp, 0, sizeof(consensus_component));
@@ -46,7 +46,7 @@ consensus_component* init_consensus_comp(struct node_t* node,uint32_t node_id,in
         comp->highest_seen_vs = highest;
         comp->highest_seen_vs->view_id = 1;
         comp->highest_seen_vs->req_id = 0;
-        comp->highest_committed_vs = committed; 
+        comp->highest_committed_vs = committed;
         comp->highest_committed_vs->view_id = 1; 
         comp->highest_committed_vs->req_id = 0; 
         comp->highest_to_commit_vs = to_commit;
@@ -72,7 +72,7 @@ int consensus_submit_request(struct consensus_component_t* comp, size_t data_siz
 static view_stamp get_next_view_stamp(consensus_component* comp){
     view_stamp next_vs;
     next_vs.view_id = comp->highest_seen_vs->view_id;
-    next_vs.req_id = (comp->highest_seen_vs->req_id+1);
+    next_vs.req_id = (comp->highest_seen_vs->req_id + 1);
     return next_vs;
 };
 
@@ -92,17 +92,19 @@ static int leader_handle_submit_req(struct consensus_component_t* comp, size_t d
     /* record the data persistently */
     db_key_type record_no = vstol(&next);
     request_record* record_data = (request_record*)malloc(data_size + sizeof(request_record));
-    gettimeofday(&record_data->created_time,NULL);
+    gettimeofday(&record_data->created_time, NULL);
     record_data->bit_map = (1<<comp->node_id);
     record_data->data_size = data_size;
-    memcpy(record_data->data,data,data_size);
-    if(store_record(comp->db_ptr,sizeof(record_no),&record_no,REQ_RECORD_SIZE(record_data),record_data)){
+    memcpy(record_data->data, data, data_size);
+    if(store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data))
+    {
         goto handle_submit_req_exit;
     }
     ret = 0;
     view_stamp_inc(comp->highest_seen_vs);
     append_log_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next);
     if(comp->group_size>1){
+        //TODO RDMA write
         for (i = 0; i < comp->group_size; i++) {
             if (i == comp->node_id) {
                 continue;
@@ -124,7 +126,7 @@ static int leader_handle_submit_req(struct consensus_component_t* comp, size_t d
 recheck:
         for (int i = 0; i < MAX_SERVER_COUNT; i++)
         {
-            if (new_entry->result[i] == 1)
+            if (/* TODO */)
             {
                 record_data->bit_map = (record_data->bit_map | (1<<(i + 1));
                 store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data);
@@ -132,12 +134,12 @@ recheck:
         }
         if (reached_quorum(record_data,comp->group_size))
         {
-            try_to_execute(comp);
+            return 0;
         }else{
         goto recheck;
         }
     }else{
-        try_to_execute(comp);
+            return 0;
     }
 handle_submit_req_exit: 
     if(record_data != NULL){
@@ -189,7 +191,7 @@ static void handle_accept_req(consensus_component* comp)
             // record the data persistently 
             store_record(comp->db_ptr,sizeof(record_no),&record_no,REQ_RECORD_SIZE(record_data),record_data)
 
-            //TODO RDMA reply to the leader
+            //TODO: RDMA reply to the leader
         }
 
 handle_accept_req_exit:
@@ -204,20 +206,9 @@ static void leader_try_to_execute(consensus_component* comp){
     db_key_type end = vstol(comp->highest_seen_vs);;
 
     size_t data_size;
-    view_stamp temp_boundary;
-    view_boundary* boundary_record = NULL;
-    if(comp->highest_seen_vs->view_id != comp->highest_to_commit_vs->view_id){
-        // address the boundary
+    // TODO: address the boundary
         
-        assert(comp->highest_to_commit_vs->view_id + 1 == comp->highest_seen_vs->view_id);
-        comp->highest_to_commit_vs->view_id += 1;
-        comp->highest_to_commit_vs->req_id = 0;
-        comp->highest_committed_vs->view_id = comp->highest_to_commit_vs->view_id;
-        comp->highest_committed_vs->req_id = comp->highest_to_commit_vs->req_id;
-        start = vstol(comp->highest_to_commit_vs); 
-    } else{
-        start = vstol(comp->highest_to_commit_vs)+1;
-    }
+    start = vstol(comp->highest_to_commit_vs)+1;
 
     int exec_flag = (!view_stamp_comp(comp->highest_committed_vs,comp->highest_to_commit_vs));
     request_record* record_data = NULL;
@@ -228,9 +219,11 @@ static void leader_try_to_execute(consensus_component* comp){
             
             view_stamp_inc(comp->highest_to_commit_vs);
 
-            if(exec_flag){
+            if(exec_flag)
+            {
                 view_stamp vs = ltovs(index);
-                deliver_msg_data(comp,&vs);
+                //deliver_msg_data(comp,&vs);
+                //TODO: process_req
                 view_stamp_inc(comp->highest_committed_vs);
             }
         }else{
@@ -240,10 +233,7 @@ static void leader_try_to_execute(consensus_component* comp){
 }
 
 static void try_to_execute(consensus_component* comp){
-    // there we have assumption, for the currently leader,whose commited request
-    // and highest request to execute must be in the same view, otherwise, the
-    // leader cannot be the leader 
-    
+
     if(comp->cur_view->view_id==0){
 
         goto try_to_execute_exit;
@@ -253,78 +243,30 @@ static void try_to_execute(consensus_component* comp){
     }
     db_key_type start = vstol(comp->highest_committed_vs)+1;
     db_key_type end;
-    view_stamp temp_boundary;
-    view_boundary* boundary_record = NULL;
     size_t data_size;
-    if(comp->highest_committed_vs->view_id!=comp->highest_to_commit_vs->view_id){
         
-        //address the boundary
-        view_stamp bound;
-        bound.view_id = comp->highest_committed_vs->view_id+1;
-        bound.req_id = 0;
-        db_key_type bound_record_no = vstol(&bound);
-        retrieve_record(comp->db_ptr,sizeof(bound_record_no),&bound_record_no,&data_size,(void**)&boundary_record);
-        if(NULL==boundary_record){
-           send_missing_req(comp,&bound); 
-           goto try_to_execute_exit;
-        }
-        temp_boundary.view_id = boundary_record->view_id;
-        temp_boundary.req_id = boundary_record->req_id;
-        end = vstol(&temp_boundary);
-    }else{
-        end = vstol(comp->highest_to_commit_vs);
-    }
+    //TODO: address the boundary
+
+    end = vstol(comp->highest_to_commit_vs);
+
     request_record* record_data = NULL;
     // we can only execute thins in sequence
     int exec_flag = 1;
     view_stamp missing_vs;
     for(db_key_type index = start;index<=end;index++){
         missing_vs = ltovs(index);
-        if(0!=retrieve_record(comp->db_ptr,sizeof(index),&index,
-                    &data_size,(void**)&record_data)){
+        if(0!=retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&record_data))
+        {
             exec_flag = 0;
-            send_missing_req(comp,&missing_vs);
+            //TODO: send_missing_req(comp,&missing_vs);
         }
         if(exec_flag){
-            deliver_msg_data(comp,&missing_vs);
+            //deliver_msg_data(comp,&missing_vs);
+            //TODO:
             view_stamp_inc(comp->highest_committed_vs);
         }
         record_data = NULL;
     }
-    if(NULL!=boundary_record){
-        temp_boundary.view_id = boundary_record->view_id;
-        temp_boundary.req_id = boundary_record->req_id;
-        db_key_type op1 = vstol(comp->highest_committed_vs);
-        db_key_type op2 = vstol(&temp_boundary);
-        if(op1==op2){
-            cross_view(comp->highest_committed_vs);
-        }
-    }
 try_to_execute_exit:
     return;
 };
-
-static void deliver_msg_data(consensus_component* comp,view_stamp* vs){
-
-    // in order to accelerate deliver process of the program
-    // we may just give the record number instead of the real data 
-    // to the proxy, and then the proxy will take the overhead of database operation
-    
-    db_key_type vstokey = vstol(vs);
-    if(comp->deliver_mode==1)
-    {
-        request_record* data = NULL;
-        size_t data_size=0;
-        retrieve_record(comp->db_ptr,sizeof(db_key_type),&vstokey,&data_size,(void**)&data);
-        if(NULL!=data){
-            if(comp->ucb!=NULL){
-                comp->ucb(data->data_size,data->data,comp->up_para);
-            }
-        }
-    }else{
-        if(comp->ucb!=NULL){
-            comp->ucb(sizeof(db_key_type),&vstokey,comp->up_para);
-        }
-    }
-    return;
-}

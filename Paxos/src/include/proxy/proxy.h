@@ -45,6 +45,10 @@ typedef struct proxy_node_t{
     // for call back of the thread;
     pthread_mutex_t lock;
 
+    view cur_view;
+    //consensus component
+    struct consensus_component_t* consensus_comp;
+
 }proxy_node;
 
 typedef enum proxy_action_t{

@@ -31,6 +31,11 @@ int server_init(server_input_t *input)
 
     struct proxy_node_t* proxy = proxy_init(data.config.idx, data.inout.input.srv_type);
     proxy_run(proxy);
+
+    if(/* secondary */)
+    {
+        //
+    }
 }
 
 static int init_server_data()
@@ -188,42 +193,5 @@ static void poll_ud()
         }
         case RC_SYNACK:
         case RC_ACK:
-    }
-}
-
-/* replica side */
-while (TRUE)
-{
-    log_entry_t* new_entry = log_add_new_entry(data.log);
-    if (new_entry->idx != 0)
-    {
-        /* record the data persistently */
-        uint64_t record_no = vstol(new_entry->term, new_entry->idx);
-        request_record_t* record_data = (request_record_t*)malloc(new_entry->data.cmd.len + sizeof(request_record_t));
-        record_data->data_size = new_entry->data.cmd.len;
-        memcpy(record_data->data, new_entry->data.cmd.cmd, new_entry->data.cmd.len);
-        store_record(data.db_ptr, sizeof(record_no), record_no, new_entry->data.cmd.len + sizeof(request_record_t), record_data);
-
-        /* RDMA write result to the leader*/
-        uint32_t remote_offset = (uint32_t)(offsetof(log_t, entries) + data.log->end);
-        uint8_t leader = SID_GET_IDX(data.cached_sid);
-        int* res;
-        *res = 1;
-        RDMA_write(leader, res, sizeof(int), remote_offset);
-
-        data.log->tail = log->end;
-        data.log->end += log_entry_len(new_entry);
-
-        /* compare committed*/
-        client_req_t* req_canbe_exed = NULL;
-        while (new_entry->committed > data.log->write)
-        {
-            log_entry_t* entry_canbe_exed = (log_entry_t*)(data.log->entries + data.log->write);
-            req_canbe_exed->cmd.cmd.len = entry_canbe_exed->data.cmd.len;
-            memcpy(req_canbe_exed->cmd.cmd.data, entry_canbe_exed->data.cmd.cmd, entry_canbe_exed->data.cmd.len);
-            data.log->write += log_entry_len(entry_canbe_exed);
-            req_canbe_exed++;
-        }
-        //TODO: send req_canbe_exed to server application (maybe wake up another thread to do this)
     }
 }

@@ -16,7 +16,6 @@ struct cid_t
 {
 	uint8_t size;
     uint32_t bitmask;
-    uint8_t size;
     uint8_t state;
 };
 typedef struct cid_t cid_t;

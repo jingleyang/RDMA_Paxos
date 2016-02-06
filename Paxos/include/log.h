@@ -1,5 +1,5 @@
 struct log_entry_t {
-    int result[MAX_SERVER_COUNT];
+    view_stamp result[MAX_SERVER_COUNT];
 
     view_stamp msg_vs;
     view_stamp req_canbe_exed;
