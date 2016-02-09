@@ -1,4 +1,4 @@
-extern FILE *log_fp;
+extern FILE *rdma_log_fp;
 
 /* InfiniBand device */
 extern ib_device_t *ib_device;
@@ -13,13 +13,13 @@ int rc_init()
 
     rc_prerequisite();
     if (0 != rc) {
-        error_return(1, log_fp, "Cannot create RC prerequisite\n");
+        rdma_error_return(1, rdma_log_fp, "Cannot create RC prerequisite\n");
     }
 
     /* Register memory for RC */
     rc = rc_memory_reg();
     if (0 != rc) {
-        error_return(1, log_fp, "Cannot register RC memory\n");
+        rdma_error_return(1, rdma_log_fp, "Cannot register RC memory\n");
     }
     
     /* Create QPs for RC communication */
@@ -30,7 +30,7 @@ int rc_init()
         /* Create QPs for this endpoint */
         rc_qp_create(ep);
         if (0 != rc) {
-            error_return(1, log_fp, "Cannot create QPs\n");
+            rdma_error_return(1, rdma_log_fp, "Cannot create QPs\n");
         }
     }
     
@@ -52,28 +52,28 @@ static int rc_prerequisite()
     /* Allocate a RC protection domain */
     IBDEV->rc_pd = ibv_alloc_pd(IBDEV->ib_dev_context);
     if (NULL == IBDEV->rc_pd) {
-        error_return(1, log_fp, "Cannot create PD\n");
+        rdma_error_return(1, rdma_log_fp, "Cannot create PD\n");
     }
 
     /* Create a RC completion queue */
     IBDEV->rc_cq[LOG_QP] = ibv_create_cq(IBDEV->ib_dev_context, 
                                    IBDEV->rc_cqe, NULL, NULL, 0);
     if (NULL == IBDEV->rc_cq[LOG_QP]) {
-        error_return(1, log_fp, "Cannot create LOG CQ\n");
+        rdma_error_return(1, rdma_log_fp, "Cannot create LOG CQ\n");
     }
 
     if (0 != find_max_inline(IBDEV->ib_dev_context,
                             IBDEV->rc_pd,
                             &IBDEV->rc_max_inline_data))
     {
-        error_return(1, log_fp, "Cannot find max RC inline data\n");
+        rdma_error_return(1, rdma_log_fp, "Cannot find max RC inline data\n");
     }
 
     /* Allocate array for work completion */
     IBDEV->rc_wc_array = (struct ibv_wc*)
             malloc(IBDEV->rc_cqe * sizeof(struct ibv_wc));
     if (NULL == IBDEV->rc_wc_array) {
-        error_return(1, log_fp, "Cannot allocate array for WC\n");
+        rdma_error_return(1, rdma_log_fp, "Cannot allocate array for WC\n");
     }
 
     return 0;
@@ -87,8 +87,8 @@ int rc_memory_reg()
             IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | 
             IBV_ACCESS_REMOTE_READ | IBV_ACCESS_LOCAL_WRITE);
     if (NULL == IBDEV->lcl_mr[LOG_QP]) {
-        error_return(1, log_fp, "Cannot register memory because %s\n", 
-                    strerror(errno));
+        rdma_error_return(1, rdma_log_fp, "Cannot register memory because %s\n", 
+                    strrdma_error(errno));
     }
 
     return 0;
@@ -118,7 +118,7 @@ int rc_qp_create(ib_ep_t* ep )
         qp_init_attr.cap.max_send_wr = IBDEV->rc_max_send_wr;
         ep->rc_ep.rc_qp[i].qp = ibv_create_qp(IBDEV->rc_pd, &qp_init_attr);
         if (NULL == ep->rc_ep.rc_qp[i].qp) {
-            error_return(1, log_fp, "Cannot create QP\n");
+            rdma_error_return(1, rdma_log_fp, "Cannot create QP\n");
         }
         ep->rc_ep.rc_qp[i].signaled_wr_id = 0;
         ep->rc_ep.rc_qp[i].send_count = 0;
@@ -126,7 +126,7 @@ int rc_qp_create(ib_ep_t* ep )
         
         //rc = rc_qp_reset_to_init(ep, i);
         //if (0 != rc) {
-        //    error_return(1, log_fp, "Cannot move QP to init state\n");
+        //    rdma_error_return(1, rdma_log_fp, "Cannot move QP to init state\n");
         //}
     }
 
@@ -153,24 +153,24 @@ int rc_connect_server( uint8_t idx, int qp_id )
     if (attr.qp_state != IBV_QPS_RESET) {
         rc = rc_qp_reset(ep, qp_id);
         if (0 != rc) {
-            error_return(1, log_fp, "Cannot move QP to reset state\n");
+            rdma_error_return(1, rdma_log_fp, "Cannot move QP to reset state\n");
         }
     }
     
     rc = rc_qp_reset_to_init(ep, qp_id);
     if (0 != rc) {
-        error_return(1, log_fp, "Cannot move QP to init state\n");
+        rdma_error_return(1, rdma_log_fp, "Cannot move QP to init state\n");
     }
     rc = rc_qp_init_to_rtr(ep, qp_id);
     if (0 != rc) {
-        error_return(1, log_fp, "Cannot move QP to RTR state\n");
+        rdma_error_return(1, rdma_log_fp, "Cannot move QP to RTR state\n");
     }
     rc = rc_qp_rtr_to_rts(ep, qp_id);
     if (0 != rc) {
-        error_return(1, log_fp, "Cannot move QP to RTS state\n");
+        rdma_error_return(1, rdma_log_fp, "Cannot move QP to RTS state\n");
     }
 
-    //info_wtime(log_fp, " # Connect server: %lf (ms)\n", (ev_now(RDMA_DATA->loop) - start_ts)*1000);
+    //info_wtime(rdma_log_fp, " # Connect server: %lf (ms)\n", (ev_now(RDMA_DATA->loop) - start_ts)*1000);
     return 0;
 }
 
@@ -180,7 +180,7 @@ int rc_connect_server( uint8_t idx, int qp_id )
  * Move a QP to the RESET state 
  */
 static int
-rc_qp_reset( dare_ib_ep_t *ep, int qp_id )
+rc_qp_reset( ib_ep_t *ep, int qp_id )
 {
     int rc;
     //struct ibv_wc wc;
@@ -192,7 +192,7 @@ rc_qp_reset( dare_ib_ep_t *ep, int qp_id )
     //empty_completion_queue(0, qp_id, 0, NULL);
     rc = ibv_modify_qp(ep->rc_ep.rc_qp[qp_id].qp, &attr, IBV_QP_STATE); 
     if (0 != rc) {
-        error_return(1, log_fp, "ibv_modify_qp failed because %s\n", strerror(rc));
+        rdma_error_return(1, rdma_log_fp, "ibv_modify_qp failed because %s\n", strrdma_error(rc));
     }
     
     return 0;
@@ -202,13 +202,13 @@ rc_qp_reset( dare_ib_ep_t *ep, int qp_id )
  * Transit a QP from RESET to INIT state 
  */
 static int 
-rc_qp_reset_to_init( dare_ib_ep_t *ep, int qp_id )
+rc_qp_reset_to_init( ib_ep_t *ep, int qp_id )
 {
     int rc;
     struct ibv_qp_attr attr;
 //    struct ibv_qp_init_attr init_attr;
 //    ibv_query_qp(ep->rc_ep.rc_qp[qp_id].qp, &attr, IBV_QP_STATE, &init_attr);
-//    info(log_fp, "[QP Info (LID=%"PRIu16")] %s QP: %s\n",
+//    info(rdma_log_fp, "[QP Info (LID=%"PRIu16")] %s QP: %s\n",
 //         ep->ud_ep.lid, (LOG_QP == qp_id) ? "log" : "ctrl",
 //         qp_state_to_str(attr.qp_state));
     
@@ -230,7 +230,7 @@ rc_qp_reset_to_init( dare_ib_ep_t *ep, int qp_id )
                         IBV_QP_STATE | IBV_QP_PKEY_INDEX | 
                         IBV_QP_PORT | IBV_QP_ACCESS_FLAGS); 
     if (0 != rc) {
-        error_return(1, log_fp, "ibv_modify_qp failed because %s\n", strerror(rc));
+        rdma_error_return(1, rdma_log_fp, "ibv_modify_qp failed because %s\n", strrdma_error(rc));
     }
     return 0;
 }
@@ -239,7 +239,7 @@ rc_qp_reset_to_init( dare_ib_ep_t *ep, int qp_id )
  * Transit a QP from INIT to RTR state 
  */
 static int 
-rc_qp_init_to_rtr( dare_ib_ep_t *ep, int qp_id )
+rc_qp_init_to_rtr( ib_ep_t *ep, int qp_id )
 {
     int rc;
     struct ibv_qp_attr attr;
@@ -274,10 +274,10 @@ rc_qp_init_to_rtr( dare_ib_ep_t *ep, int qp_id )
                         IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER | 
                         IBV_QP_RQ_PSN | IBV_QP_AV | IBV_QP_DEST_QPN);
     if (0 != rc) {
-        error_return(1, log_fp, "ibv_modify_qp failed because %s\n", strerror(rc));
+        rdma_error_return(1, rdma_log_fp, "ibv_modify_qp failed because %s\n", strrdma_error(rc));
     }
     
-    //debug(log_fp, "Move %s QP of lid=%"PRIu16" into RTR state RQ_PSN=%"PRIu32"\n", 
+    //debug(rdma_log_fp, "Move %s QP of lid=%"PRIu16" into RTR state RQ_PSN=%"PRIu32"\n", 
     //               log ? "log":"ctrl", ep->ud_ep.lid, attr.rq_psn);
     return 0;
 }
@@ -286,7 +286,7 @@ rc_qp_init_to_rtr( dare_ib_ep_t *ep, int qp_id )
  * Transit a QP from RTR to RTS state
  */
 static int 
-rc_qp_rtr_to_rts( dare_ib_ep_t *ep, int qp_id )
+rc_qp_rtr_to_rts( ib_ep_t *ep, int qp_id )
 {
     int rc;
     struct ibv_qp_attr attr;
@@ -297,7 +297,7 @@ rc_qp_rtr_to_rts( dare_ib_ep_t *ep, int qp_id )
     }
     //struct ibv_qp_init_attr init_attr;
     //ibv_query_qp(ep->rc_ep.rc_qp[qp_id].qp, &attr, IBV_QP_MAX_QP_RD_ATOMIC | IBV_QP_MAX_DEST_RD_ATOMIC, &init_attr);
-    //info_wtime(log_fp, "RC QP[%s] max_rd_atomic=%"PRIu8"; max_dest_rd_atomic=%"PRIu8"\n", qp_id == LOG_QP ? "LOG" : "CTRL", attr.max_rd_atomic, attr.max_dest_rd_atomic);
+    //info_wtime(rdma_log_fp, "RC QP[%s] max_rd_atomic=%"PRIu8"; max_dest_rd_atomic=%"PRIu8"\n", qp_id == LOG_QP ? "LOG" : "CTRL", attr.max_rd_atomic, attr.max_dest_rd_atomic);
 
     /* Move the QP into the RTS state */
     memset(&attr, 0, sizeof(attr));
@@ -307,7 +307,7 @@ rc_qp_rtr_to_rts( dare_ib_ep_t *ep, int qp_id )
     attr.retry_cnt      = 0;    // max is 7
     attr.rnr_retry      = 7;
     attr.sq_psn         = (LOG_QP == qp_id) ? psn : CTRL_PSN;
-//debug(log_fp, "MY SQ PSN: %"PRIu32"\n", attr.sq_psn);
+//debug(rdma_log_fp, "MY SQ PSN: %"PRIu32"\n", attr.sq_psn);
     attr.max_rd_atomic = IBDEV->ib_dev_attr.max_qp_rd_atom;
 
     rc = ibv_modify_qp(ep->rc_ep.rc_qp[qp_id].qp, &attr, 
@@ -315,14 +315,14 @@ rc_qp_rtr_to_rts( dare_ib_ep_t *ep, int qp_id )
                         IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | 
                         IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
     if (0 != rc) {
-        error_return(1, log_fp, "ibv_modify_qp failed because %s\n", strerror(rc));
+        rdma_error_return(1, rdma_log_fp, "ibv_modify_qp failed because %s\n", strrdma_error(rc));
     }
     
     //ibv_query_qp(ep->rc_ep.rc_qp[qp_id].qp, &attr, IBV_QP_MAX_QP_RD_ATOMIC | IBV_QP_MAX_DEST_RD_ATOMIC, &init_attr);
-    //info_wtime(log_fp, "RC QP[%s] max_rd_atomic=%"PRIu8"; max_dest_rd_atomic=%"PRIu8"\n", qp_id == LOG_QP ? "LOG" : "CTRL", attr.max_rd_atomic, attr.max_dest_rd_atomic);
+    //info_wtime(rdma_log_fp, "RC QP[%s] max_rd_atomic=%"PRIu8"; max_dest_rd_atomic=%"PRIu8"\n", qp_id == LOG_QP ? "LOG" : "CTRL", attr.max_rd_atomic, attr.max_dest_rd_atomic);
 
     
-    //debug(log_fp, "Move %s QP of lid=%"PRIu16" into RTS state SQ_PSN=%"PRIu32"\n", 
+    //debug(rdma_log_fp, "Move %s QP of lid=%"PRIu16" into RTS state SQ_PSN=%"PRIu32"\n", 
     //               qp_id==LOG_QP ? "log":"ctrl", ep->ud_ep.lid, attr.sq_psn);
     return 0;
 }
@@ -394,7 +394,7 @@ post_send( uint8_t server_id,
         /* This QP is blocked; need to wait for the signaled WR */
         //empty_completion_queue(server_id, qp_id, 1, NULL);
     }
-    if (RC_QP_ERROR == *qp_state_ptr) {
+    if (RC_QP_rdma_error == *qp_state_ptr) {
         /* This QP is in ERR state - restart it */
         //rc_qp_restart(ep, qp_id);
         *qp_state_ptr = RC_QP_ACTIVE;

@@ -3,7 +3,7 @@ extern FILE *log_fp;
 /* InfiniBand device */
 ib_device_t *ib_device;
 #define IBDEV ib_device
-#define SRV_DATA ((server_data_t*)ib_device->udata)
+#define RDMA_DATA ((rdma_data_t*)ib_device->udata)
 
 int init_ib_device(uint32_t receive_count)
 {
@@ -58,12 +58,12 @@ int init_ib_srv_data(void *data)
     int i;
     IBDEV->udata = data;
      
-    for (i = 0; i < SRV_DATA->config.len; i++) {
-        SRV_DATA->config.servers[i].ep = malloc(sizeof(ib_ep_t));
-        if (NULL == SRV_DATA->config.servers[i].ep) {
+    for (i = 0; i < RDMA_DATA->config.len; i++) {
+        RDMA_DATA->config.servers[i].ep = malloc(sizeof(ib_ep_t));
+        if (NULL == RDMA_DATA->config.servers[i].ep) {
             error_return(1, log_fp, "Cannot allocate EP\n");
         }
-        memset(SRV_DATA->config.servers[i].ep, 0, sizeof(ib_ep_t));
+        memset(RDMA_DATA->config.servers[i].ep, 0, sizeof(ib_ep_t));
     }
     
     return 0;

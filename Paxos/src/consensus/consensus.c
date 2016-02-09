@@ -17,7 +17,7 @@ typedef struct consensus_component_t{
 
     uint32_t group_size;
 
-    FILE* sys_log_file;
+    FILE* con_log_file;
 
     view* cur_view;
     view_stamp* highest_seen_vs; 
@@ -27,7 +27,7 @@ typedef struct consensus_component_t{
     db* db_ptr;
 }consensus_component;
 
-consensus_component* init_consensus_comp(const char* config_path, const char* sys_log, node_id_t node_id, const char* start_mode){
+consensus_component* init_consensus_comp(const char* config_path, const char* log_path, node_id_t node_id, const char* start_mode){
     
     consensus_component* comp = (consensus_component*)malloc(sizeof(consensus_component));
     memset(comp, 0, sizeof(consensus_component));
@@ -40,7 +40,29 @@ consensus_component* init_consensus_comp(const char* config_path, const char* sy
             comp->cur_view.leader_id = comp->node_id;
             comp->cur_view.req_id = 0;
         }
-        comp->sys_log_file = fopen(sys_log, "w+"); 
+
+        int build_log_ret = 0;
+        if(log_path == NULL){
+            log_path = ".";
+        }else{
+            if((build_log_ret = mkdir(log_path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) != 0){
+                if(errno != EEXIST){
+                    err_log("Log Directory Creation Failed, No Log Will Be Recorded.\n");
+                }else{
+                    build_log_ret = 0;
+                }
+            }
+        }
+
+        if(!build_log_ret){
+            char* con_log_path = (char*)malloc(sizeof(char)*strlen(log_path) + 50);
+            memset(con_log_path, 0, sizeof(char)*strlen(log_path) + 50);
+            if(NULL != con_log_path){
+                sprintf(con_log_path, "%s/node-%u-consensus.log", log_path, comp->node_id);
+                comp->con_log_file = fopen(con_log_path, "w");
+                free(con_log_path);
+            }
+        }
 
         if(comp->cur_view->leader_id == comp->node_id){
             comp->my_role = LEADER;
@@ -107,6 +129,8 @@ recheck:
         }else{
             goto recheck;
         }
+    }else{
+        CON_LOG(comp, "group_size <= 1, execute by myself.\n");
     }
 handle_submit_req_exit: 
     if(record_data != NULL){
@@ -134,50 +158,53 @@ static void handle_accept_req(consensus_component* comp)
 {
     while (TRUE)
     {
-        log_entry_t* new_entry = log_add_new_entry(comp->log);
-        if(new_entry->msg_vs.view_id < comp->cur_view->view_id){
-            // TODO
-        }
-        // if we this message is not from the current leader
-        if(new_entry->msg_vs.view_id == comp->cur_view->view_id && new_entry->node_id != comp->cur_view->leader_id){
-            // TODO
-        }
-
-        // update highest seen request
-        if(view_stamp_comp(&new_entry->msg_vs, comp->highest_seen_vs) > 0){
-            *(comp->highest_seen_vs) = new_entry->msg_vs;
-        }
-
-        db_key_type record_no = vstol(&new_entry->msg_vs);
-        request_record* origin_data = (request_record*)msg->data;
-        request_record* record_data = (request_record*)malloc(REQ_RECORD_SIZE(origin_data));
-
-        gettimeofday(&record_data->created_time, NULL);
-        record_data->data_size = origin_data->data_size;
-        memcpy(record_data->data, origin_data->data, origin_data->data_size);
-
-        // record the data persistently 
-        store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data)
-
-        //TODO: RDMA reply to the leader
-        //TODO: need to register a memory for this
-        accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
-
-        if(view_stamp_comp(&new_entry->req_canbe_exed, comp->committed) > 0)
+        log_entry_t* new_entry = log_add_new_entry(RDMA_DATA->log);
+        
+        if ()
         {
-            db_key_type start = vstol(comp->committed)+1;
-            db_key_type end = vstol(&new_entry->req_canbe_exed);
-            for(db_key_type index = start; index <= end; index++)
-            {
-                //send request to itself
+            CON_LOG(comp, "Node %d Handle Accept Req.\n", comp->node_id);
+            if(new_entry->msg_vs.view_id < comp->cur_view->view_id){
+                // TODO
+                //goto reloop;
             }
-            *(comp->highest_to_commit_vs) = new_entry->req_canbe_exed;
+            // if we this message is not from the current leader
+            if(new_entry->msg_vs.view_id == comp->cur_view->view_id && new_entry->node_id != comp->cur_view->leader_id){
+                // TODO
+                //goto reloop;
+            }
+
+            // update highest seen request
+            if(view_stamp_comp(&new_entry->msg_vs, comp->highest_seen_vs) > 0){
+                *(comp->highest_seen_vs) = new_entry->msg_vs;
+            }
+
+            db_key_type record_no = vstol(&new_entry->msg_vs);
+            request_record* origin_data = (request_record*)msg->data;
+            request_record* record_data = (request_record*)malloc(REQ_RECORD_SIZE(origin_data));
+
+            gettimeofday(&record_data->created_time, NULL);
+            record_data->data_size = origin_data->data_size;
+            memcpy(record_data->data, origin_data->data, origin_data->data_size);
+
+            // record the data persistently 
+            store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data)
+
+            //TODO: RDMA reply to the leader
+            //TODO: need to register a memory for this
+            accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
+
+            if(view_stamp_comp(&new_entry->req_canbe_exed, comp->committed) > 0)
+            {
+                db_key_type start = vstol(comp->committed)+1;
+                db_key_type end = vstol(&new_entry->req_canbe_exed);
+                for(db_key_type index = start; index <= end; index++)
+                {
+                    //send request to itself
+                }
+                *(comp->highest_to_commit_vs) = new_entry->req_canbe_exed;
+            }
         }
-
     }
-
-handle_accept_req_exit:
-        return;
 };
 
 

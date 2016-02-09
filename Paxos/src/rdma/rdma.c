@@ -1,4 +1,9 @@
-FILE *log_fp;
+#define INIT            0x2
+#define JOINED          0x4
+#define RC_ESTABLISHED  0x8
+uint64_t rdma_state;
+
+FILE * rdma_log_fp;
 
 /* server data */
 rdma_data_t rdma_data;
@@ -10,13 +15,38 @@ ev_idle poll_event;
 
 /* ================================================================== */
 
-int rdma_init(uint32_t node_it, int group_size, FILE* sys_log_file, log_t* log)
+int rdma_init(node_id_t node_id, int size, const char* log_path, const char* start_mode)
 {
     /* Initialize data fields to zero */
     memset(&rdma_data, 0, sizeof(rdma_data_t));
-    
-    /* Set log file handler */
-    log_fp = ;
+
+    int build_log_ret = 0;
+    if(log_path == NULL){
+        log_path = ".";
+    }else{
+        if((build_log_ret = mkdir(log_path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) != 0){
+            if(errno != EEXIST){
+            }else{
+                build_log_ret = 0;
+            }
+        }
+    }
+
+    if(!build_log_ret){
+        char* rdma_log_path = (char*)malloc(sizeof(char)*strlen(log_path) + 50);
+        memset(rdma_log_path, 0, sizeof(char)*strlen(log_path) + 50);
+        if(NULL != rdma_log_path){
+            sprintf(rdma_log_path, "%s/node-%u-rdma.log", log_path, node_id);
+            rdma_data.input->rdma_log = fopen(rdma_log_path, "w");
+            free(rdma_log_path);
+        }
+    }
+
+    rdma_data.input->server_idx = node_id;
+    rdma_data.input->srv_type = start_mode;
+    rdma_data.input->group_size = size;
+
+    rdma_log_fp = rdma_data.input->rdma_log;
 
     init_rdma_data();
 
@@ -30,19 +60,24 @@ int rdma_init(uint32_t node_it, int group_size, FILE* sys_log_file, log_t* log)
 static int init_rdma_data()
 {
     /* Set up the configuration */
-    rdma_data.config.idx = node_it;
+    rdma_data.config.idx = data.input->server_idx;
     rdma_data.config.len = MAX_SERVER_COUNT;
+    if (data.config.len < data.input->group_size) {
+        error_return(1, log_fp, "Cannot have more than %d servers\n", 
+                    MAX_SERVER_COUNT);
+    }
+    data.config.cid.size = data.input->group_size;
 
     /* Cannot have more than MAX_SERVER_COUNT servers */
     rdma_data.config.len = MAX_SERVER_COUNT;
 
-    for (i = 0; i < group_size; i++) {
-        CID_SERVER_ADD(rdma_data.config.cid, i);
+    for (i = 0; i < data.input->group_size; i++) {
+        CID_SERVER_ADD(data.config.cid, i);
     }
 
     rdma_data.config.servers = (server_t*)malloc(rdma_data.config.len * sizeof(server_t));
     if (NULL == rdma_data.config.servers) {
-        error_return(1, log_fp, "Cannot allocate configuration array\n");
+        rdma_error_return(1, rdma_log_fp, "Cannot allocate configuration array\n");
     }
     memset(rdma_data.config.servers, 0, rdma_data.config.len * sizeof(server_t));
 
@@ -55,7 +90,7 @@ static int init_rdma_data()
 
 static void free_server_data()
 {
-    ep_db_free(&data.endpoints);
+    ep_db_free(&rdma_data.endpoints);
     
     /* Free servers */
     if (NULL != rdma_data.config.servers) {
@@ -73,31 +108,33 @@ static void init_network_cb()
     /* Init IB device */
     rc = init_ib_device(MAX_SERVER_COUNT);
     if (0 != rc) {
-        error(log_fp, "Cannot init IB device\n");
+        rdma_error(rdma_log_fp, "Cannot init IB device\n");
     }
 
     /* Init some IB data for the server */
     rc = init_ib_srv_data(&rdma_data);
     if (0 != rc) {
-        error(log_fp, "Cannot init IB SRV data\n");
+        rdma_error(rdma_log_fp, "Cannot init IB SRV data\n");
     }
 
     /* Init IB RC */
     rc = init_ib_rc();
         if (0 != rc) {
-        error(log_fp, "Cannot init IB RC\n");
+        rdma_error(rdma_log_fp, "Cannot init IB RC\n");
     }
 
     /* Start IB UD */
     rc = start_ib_ud();
     if (0 != rc) {
-        error(log_fp, "Cannot start IB UD\n");
+        rdma_error(rdma_log_fp, "Cannot start IB UD\n");
     }
+
+    rdma_state |= INIT;
     
     /* Start poll event */   
     ev_idle_start(EV_A_ &poll_event);
     
-    if (*start_mode == 's') {
+    if (*(rdma_data.input->srv_type) == 'p') {
         /* Server joining the cluster */
         join_cluster_cb();
     }
@@ -116,7 +153,7 @@ static void join_cluster_cb()
     
     rc = ib_join_cluster();
     if (0 != rc) {
-        error(log_fp, "Cannot join cluster\n");
+        rdma_error(rdma_log_fp, "Cannot join cluster\n");
     }
     
     /* Retransmit after retransmission period */
@@ -136,7 +173,7 @@ static void exchange_rc_info()
     
     rc = ib_exchange_rc_info();
     if (0 != rc) {
-        error(log_fp, "Exchanging RC info failed\n");
+        rdma_error(rdma_log_fp, "Exchanging RC info failed\n");
     }
     
     /* Retransmit after retransmission period */
@@ -165,12 +202,13 @@ static void poll_ud()
 {
     uint8_t type = ib_poll_ud_queue();
     if (MSG_ERROR == type) {
-        error(log_fp, "Cannot get UD message\n");
+        rdma_error(rdma_log_fp, "Cannot get UD message\n");
     }
     switch(type) {
         case CFG_REPLY:
         {
-            info(log_fp, "I got accepted into the cluster: idx=%"PRIu8"\n", 
+            rdma_state |= JOINED;
+            info(rdma_log_fp, "I got accepted into the cluster: idx=%"PRIu8"\n", 
                 rdma_data.config.idx); PRINT_CID_(rdma_data.config.cid);
             
             /* Start RC discovery */
@@ -179,5 +217,9 @@ static void poll_ud()
         }
         case RC_SYNACK:
         case RC_ACK:
+        {
+            if (!(rdma_state & RC_ESTABLISHED)) {
+                rdma_state |= RC_ESTABLISHED;
+        }
     }
 }

@@ -48,6 +48,11 @@ db_init_return:
 int retrieve_record(db* db_p, size_t key_size, void* key_data, size_t* data_size, void** data){
     int ret = 1;
     if(NULL == db_p || NULL == db_p->bdb_ptr){
+        if(db_p == NULL){
+          err_log("DB retrieve_record : db_p is null.\n");
+        } else{
+          err_log("DB retrieve_record : db_p->bdb_ptr is null.\n");
+        }
         goto db_retrieve_return;
     }
     DB* b_db = db_p->bdb_ptr;
@@ -59,6 +64,7 @@ int retrieve_record(db* db_p, size_t key_size, void* key_data, size_t* data_size
     db_data.flags = DB_DBT_MALLOC;
     if((ret = b_db->get(b_db, NULL, &key, &db_data, 0)) == 0){
     }else{
+        err_log("DB : %s.\n", db_strerror(ret));
         goto db_retrieve_return;
     }
     if(!db_data.size){
@@ -72,15 +78,27 @@ db_retrieve_return:
 
 int store_record(db* db_p, size_t key_size, void* key_data, size_t data_size, void* data){
     int ret = 1;
+    if((NULL == db_p)||(NULL == db_p->bdb_ptr)){
+        if(db_p == NULL){
+          err_log("DB store_record : db_p is null.\n");
+        } else{
+          err_log("DB store_recor : db_p->bdb_ptr is null.\n");
+        }
+        goto db_store_return;
+    }
     DB* b_db = db_p->bdb_ptr;
-    DBT key, db_data;
+    DBT key,db_data;
     memset(&key, 0, sizeof(key));
-    memset(&db_data ,0, sizeof(db_data));
+    memset(&db_data, 0, sizeof(db_data));
     key.data = key_data;
     key.size = key_size;
     db_data.data = data;
     db_data.size = data_size;
-    if ((ret = b_db->put(b_db, NULL, &key, &db_data, DB_AUTO_COMMIT)) == 0){
+    if ((ret = b_db->put(b_db,NULL,&key,&db_data,DB_AUTO_COMMIT)) == 0){
     }
+    else{
+        err_log("DB : %s.\n", db_strerror(ret));
+    }
+db_store_return:
     return ret;
 }
