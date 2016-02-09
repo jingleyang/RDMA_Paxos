@@ -21,10 +21,11 @@ typedef struct consensus_component_t{
 
     view* cur_view;
     view_stamp* highest_seen_vs; 
-    view_stamp* highest_to_commit_vs;
-    view_stamp* highest_committed_vs;
+    view_stamp* committed;
 
     db* db_ptr;
+
+    /* lock */
 }consensus_component;
 
 consensus_component* init_consensus_comp(const char* config_path, const char* log_path, node_id_t node_id, const char* start_mode){
