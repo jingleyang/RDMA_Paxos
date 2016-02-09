@@ -3,7 +3,7 @@ extern FILE *log_fp;
 /* InfiniBand device */
 extern ib_device_t *ib_device;
 #define IBDEV ib_device
-#define SRV_DATA ((server_data_t*)ib_device->udata)
+#define RDMA_DATA ((rdma_data_t*)ib_device->udata)
 
 /**
  * Initialize RC data
@@ -23,9 +23,9 @@ int rc_init()
     }
     
     /* Create QPs for RC communication */
-    for (i = 0; i < SRV_DATA->config.len; i++) {
+    for (i = 0; i < RDMA_DATA->config.len; i++) {
         ib_ep_t* ep = (ib_ep_t*)
-                        SRV_DATA->config.servers[i].ep;
+                        RDMA_DATA->config.servers[i].ep;
         
         /* Create QPs for this endpoint */
         rc_qp_create(ep);
@@ -83,7 +83,7 @@ int rc_memory_reg()
 {
     /* Register memory for local log */  
     IBDEV->lcl_mr[LOG_QP] = ibv_reg_mr(IBDEV->rc_pd,
-            SRV_DATA->log, sizeof(log_t) + SRV_DATA->log->len, 
+            RDMA_DATA->log, sizeof(log_t) + RDMA_DATA->log->len, 
             IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | 
             IBV_ACCESS_REMOTE_READ | IBV_ACCESS_LOCAL_WRITE);
     if (NULL == IBDEV->lcl_mr[LOG_QP]) {
@@ -145,9 +145,9 @@ int rc_connect_server( uint8_t idx, int qp_id )
     int rc;
     struct ibv_qp_attr attr;
     struct ibv_qp_init_attr init_attr;
-    dare_ib_ep_t *ep = (dare_ib_ep_t*)SRV_DATA->config.servers[idx].ep;
+    ib_ep_t *ep = (ib_ep_t*)RDMA_DATA->config.servers[idx].ep;
     
-    //ev_tstamp start_ts = ev_now(SRV_DATA->loop);
+    //ev_tstamp start_ts = ev_now(RDMA_DATA->loop);
     
     ibv_query_qp(ep->rc_ep.rc_qp[qp_id].qp, &attr, IBV_QP_STATE, &init_attr);
     if (attr.qp_state != IBV_QPS_RESET) {
@@ -170,7 +170,7 @@ int rc_connect_server( uint8_t idx, int qp_id )
         error_return(1, log_fp, "Cannot move QP to RTS state\n");
     }
 
-    //info_wtime(log_fp, " # Connect server: %lf (ms)\n", (ev_now(SRV_DATA->loop) - start_ts)*1000);
+    //info_wtime(log_fp, " # Connect server: %lf (ms)\n", (ev_now(RDMA_DATA->loop) - start_ts)*1000);
     return 0;
 }
 
@@ -245,7 +245,7 @@ rc_qp_init_to_rtr( dare_ib_ep_t *ep, int qp_id )
     struct ibv_qp_attr attr;
     uint32_t psn;
     if (LOG_QP == qp_id) {
-        uint64_t term = SID_GET_TERM(SRV_DATA->cached_sid);
+        uint64_t term = SID_GET_TERM(RDMA_DATA->cached_sid);
         psn = (uint32_t)(term & 0xFFFFFF);
     }
     //struct ibv_qp_init_attr init_attr;
@@ -292,7 +292,7 @@ rc_qp_rtr_to_rts( dare_ib_ep_t *ep, int qp_id )
     struct ibv_qp_attr attr;
     uint32_t psn;
     if (LOG_QP == qp_id) {
-        uint64_t term = SID_GET_TERM(SRV_DATA->cached_sid);
+        uint64_t term = SID_GET_TERM(RDMA_DATA->cached_sid);
         psn = (uint32_t)(term & 0xFFFFFF);
     }
     //struct ibv_qp_init_attr init_attr;
@@ -339,21 +339,21 @@ void RDMA_write(void* buf, uint32_t len, uint32_t offset, uint8_t target){
     rm.rkey = ep->rc_ep.rmt_mr.rkey;
     if (target == 0)
     {
-        uint8_t size = get_group_size(SRV_DATA->config);
+        uint8_t size = get_group_size(RDMA_DATA->config);
         for (int i = 0; i < size; i++){
-            if (i == SRV_DATA->config.idx){
+            if (i == RDMA_DATA->config.idx){
                 continue;
             }
-            if (!CID_IS_SERVER_ON(SRV_DATA->config.cid, i)){
+            if (!CID_IS_SERVER_ON(RDMA_DATA->config.cid, i)){
                 continue;
             }
 
-            ep = (ib_ep_t*)SRV_DATA->config.servers[i].ep;
+            ep = (ib_ep_t*)RDMA_DATA->config.servers[i].ep;
 
             post_send(i, buf, len, IBDEV->lcl_mr, IBV_WR_RDMA_WRITE, rm);
         }
     }else{
-            ep = (ib_ep_t*)SRV_DATA->config.servers[target].ep;
+            ep = (ib_ep_t*)RDMA_DATA->config.servers[target].ep;
 
             post_send(i, buf, len, IBDEV->lcl_mr, IBV_WR_RDMA_WRITE, rm);
     }
@@ -385,7 +385,7 @@ post_send( uint8_t server_id,
     struct ibv_send_wr *bad_wr;
 
     /* Define some temporary variables */
-    ep = (ib_ep_t*)SRV_DATA->config.servers[server_id].ep;
+    ep = (ib_ep_t*)RDMA_DATA->config.servers[server_id].ep;
     send_count_ptr = &(ep->rc_ep.rc_qp.send_count);
     signaled_wrid_ptr = &(ep->rc_ep.rc_qp.signaled_wr_id);
     qp_state_ptr = &(ep->rc_ep.rc_qp.state);

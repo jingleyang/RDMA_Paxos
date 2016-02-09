@@ -14,24 +14,18 @@
  */
 struct cid_t
 {
-	uint8_t size;
     uint32_t bitmask;
     uint8_t state;
 };
 typedef struct cid_t cid_t;
 
-struct server_config_t 
+struct rdma_config_t 
 {
 	cid_t cid;         		/* configuration identifier */
 
-    server_t *servers;      /* array with info for each server */
+    servers_t *servers;      /* array with info for each server */
 
     uint8_t idx;            /* own index in configuration */
     uint8_t len;            /* fixed length of configuration array */
 };
-typedef struct server_config_t server_config_t;
-
-static uint8_t get_group_size(server_config_t config)
-{
-    return config.cid.size;
-}
+typedef struct rdma_config_t rdma_config_t;
