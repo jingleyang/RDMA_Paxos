@@ -4,7 +4,7 @@ static int (*c_recv)(int,void*,size_t,int);
 recv(int sockfd, void *buf, size_t len, int flags)
 {
 	// We need to call the real recv first
-	if (!((void*)c_recv=dlsym(RTLD_NEXT,"recv")))
+	if (!((void*)c_recv=dlsym(RTLD_NEXT, "recv")))
 	{
 		//Fail to get the original recv
 	}

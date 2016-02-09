@@ -1,3 +1,4 @@
+typedef int64_t node_id_t;
 typedef uint32_t req_id_t;
 typedef uint32_t view_id_t;
 

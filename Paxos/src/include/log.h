@@ -1,5 +1,5 @@
 struct log_entry_t {
-    view_stamp result[MAX_SERVER_COUNT];
+    struct accept_ack ack[MAX_SERVER_COUNT];
 
     view_stamp msg_vs;
     view_stamp req_canbe_exed;
@@ -98,7 +98,7 @@ static log_entry_t* log_get_entry(log_t* log, uint64_t *offset)
     return (log_entry_t*)(log->entries + *offset); 
 }
 
-static uint64_t log_append_entry(consensus_component* comp, size_t data_size, void* data, view_stamp* vs, log_t* log)
+static log_entry_t* log_append_entry(consensus_component* comp, size_t data_size, void* data, view_stamp* vs, log_t* log)
 {
 
     uint64_t offset = log->tail;
@@ -109,8 +109,8 @@ static uint64_t log_append_entry(consensus_component* comp, size_t data_size, vo
     log_entry_t *entry = log_add_new_entry(log);
 
     entry->node_id = comp->node_id;
-    entry->req_canbe_exed.view_id = comp->highest_to_commit_vs->view_id;
-    entry->req_canbe_exed.req_id = comp->highest_to_commit_vs->req_id;
+    entry->req_canbe_exed.view_id = comp->committed->view_id;
+    entry->req_canbe_exed.req_id = comp->committed->req_id;
     entry->data_size = data_size;
     entry->msg_vs = *vs;
 
@@ -119,10 +119,10 @@ static uint64_t log_append_entry(consensus_component* comp, size_t data_size, vo
         log->end = 0;
     }
 
-    memcpy(entry->data,data,data_size);
+    memcpy(entry->data, data, data_size);
     
     log->tail = log->end;
     log->end += log_entry_len(entry);
     
-    return idx;
+    return entry;
 }

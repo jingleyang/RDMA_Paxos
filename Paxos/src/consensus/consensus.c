@@ -49,10 +49,8 @@ consensus_component* init_consensus_comp(const char* config_path, const char* sy
         }
         comp->highest_seen_vs->view_id = 1;
         comp->highest_seen_vs->req_id = 0;
-        comp->highest_committed_vs->view_id = 1; 
-        comp->highest_committed_vs->req_id = 0; 
-        comp->highest_to_commit_vs->view_id = 1;
-        comp->highest_to_commit_vs->req_id = 0;
+        comp->committed->view_id = 1; 
+        comp->committed->req_id = 0;
 
         comp->db_ptr = initialize_db(comp->db_name, 0);
     }
@@ -88,8 +86,8 @@ static int rsm_op(struct consensus_component_t* comp, size_t data_size, void* da
     }
     ret = 0;
     view_stamp_inc(comp->highest_seen_vs);
-    append_log_entry(, REQ_RECORD_SIZE(record_data), record_data, &next, RDMA_DATA->log);
-    if(comp->group_size>1){
+    log_entry_t* new_entry = append_log_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, RDMA_DATA->log);
+    if(comp->group_size > 1){
         //TODO RDMA write
         for (i = 0; i < comp->group_size; i++) {
         }
@@ -97,32 +95,35 @@ static int rsm_op(struct consensus_component_t* comp, size_t data_size, void* da
 recheck:
         for (int i = 0; i < MAX_SERVER_COUNT; i++)
         {
-            if (/* TODO */)
+            if (new_entry->ack[i].msg_vs.view_id == next.view_id && new_entry->ack[i].msg_vs.req_id == next.req_id)
             {
-                record_data->bit_map = (record_data->bit_map | (1<<(i + 1));
+                update_record(record_data, new_entry->ack[i].node_id);
                 store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data);
             }
         }
-        if (reached_quorum(record_data,comp->group_size))
+        if (reached_quorum(record_data, comp->group_size))
         {
-            return 0;
+            goto handle_submit_req_exit;
         }else{
-        goto recheck;
+            goto recheck;
         }
-    }else{
-            return 0;
     }
 handle_submit_req_exit: 
     if(record_data != NULL){
         free(record_data);
     }
-    
+    view_stamp_inc(comp->committed);
     return ret;
 }
 
-static int reached_quorum(request_record* record,int group_size){
+static void update_record(request_record* record, uint32_t node_id){
+    record->bit_map = (record->bit_map | (1<<node_id));
+    return;
+}
+
+static int reached_quorum(request_record* record, int group_size){
     // this may be compatibility issue 
-    if(__builtin_popcountl(record->bit_map)>=((group_size/2)+1)){
+    if(__builtin_popcountl(record->bit_map) >= ((group_size/2)+1)){
         return 1;
     }else{
         return 0;
@@ -131,7 +132,7 @@ static int reached_quorum(request_record* record,int group_size){
 
 static void handle_accept_req(consensus_component* comp)
 {
-    while (1)
+    while (TRUE)
     {
         log_entry_t* new_entry = log_add_new_entry(comp->log);
         if(new_entry->msg_vs.view_id < comp->cur_view->view_id){
@@ -141,33 +142,50 @@ static void handle_accept_req(consensus_component* comp)
         if(new_entry->msg_vs.view_id == comp->cur_view->view_id && new_entry->node_id != comp->cur_view->leader_id){
             // TODO
         }
-        // if we have committed the operation, then safely ignore it
-        if(view_stamp_comp(&new_entry->msg_vs,comp->highest_committed_vs) <= 0){
-            // TODO
-        }else{
-            // update highest seen request
-            if(view_stamp_comp(&new_entry->msg_vs,comp->highest_seen_vs) > 0){
-                *(comp->highest_seen_vs) = new_entry->msg_vs;
-            }
-            if(view_stamp_comp(&new_entry->req_canbe_exed,comp->highest_to_commit_vs) > 0){
-                *(comp->highest_to_commit_vs) = new_entry->req_canbe_exed;
-            }
-            db_key_type record_no = vstol(&new_entry->msg_vs);
-            request_record* origin_data = (request_record*)msg->data;
-            request_record* record_data = (request_record*)malloc(REQ_RECORD_SIZE(origin_data));
 
-            gettimeofday(&record_data->created_time, NULL);
-            record_data->data_size = origin_data->data_size;
-            memcpy(record_data->data, origin_data->data, origin_data->data_size);
-
-            // record the data persistently 
-            store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data)
-
-            //TODO: RDMA reply to the leader
-
-            //send this request to itself
+        // update highest seen request
+        if(view_stamp_comp(&new_entry->msg_vs, comp->highest_seen_vs) > 0){
+            *(comp->highest_seen_vs) = new_entry->msg_vs;
         }
+
+        db_key_type record_no = vstol(&new_entry->msg_vs);
+        request_record* origin_data = (request_record*)msg->data;
+        request_record* record_data = (request_record*)malloc(REQ_RECORD_SIZE(origin_data));
+
+        gettimeofday(&record_data->created_time, NULL);
+        record_data->data_size = origin_data->data_size;
+        memcpy(record_data->data, origin_data->data, origin_data->data_size);
+
+        // record the data persistently 
+        store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data)
+
+        //TODO: RDMA reply to the leader
+        //TODO: need to register a memory for this
+        accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
+
+        if(view_stamp_comp(&new_entry->req_canbe_exed, comp->committed) > 0)
+        {
+            db_key_type start = vstol(comp->committed)+1;
+            db_key_type end = vstol(&new_entry->req_canbe_exed);
+            for(db_key_type index = start; index <= end; index++)
+            {
+                //send request to itself
+            }
+            *(comp->highest_to_commit_vs) = new_entry->req_canbe_exed;
+        }
+
+    }
 
 handle_accept_req_exit:
         return;
+};
+
+
+static void* build_accept_ack(consensus_component* comp, view_stamp* vs){
+    accept_ack* msg = (accept_ack*)malloc(ACCEPT_ACK_SIZE);
+    if(NULL != msg){
+        msg->node_id = comp->node_id;
+        msg->msg_vs = *vs;
+    }
+    return msg;
 };
