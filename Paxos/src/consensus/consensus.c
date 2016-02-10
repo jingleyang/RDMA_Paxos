@@ -196,8 +196,8 @@ static void handle_accept_req(consensus_component* comp)
             //TODO: need to register a memory for this
             accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
 
-            int my_socket = socket(AF_INET,SOCK_STREAM, 0);
-            connect(my_socket, (struct sockaddr*)&comp->my_address, comp->my_sock_len;
+            int my_socket = socket(AF_INET, SOCK_STREAM, 0);
+            connect(my_socket, (struct sockaddr*)&comp->my_address, comp->my_sock_len);
 
             if(view_stamp_comp(&new_entry->req_canbe_exed, comp->committed) > 0)
             {
@@ -205,7 +205,7 @@ static void handle_accept_req(consensus_component* comp)
                 db_key_type end = vstol(&new_entry->req_canbe_exed);
                 for(db_key_type index = start; index <= end; index++)
                 {
-                    send(my_socket, new_entry->data, new_entry->data_size, 0));
+                    //send(my_socket, new_entry->data, new_entry->data_size, 0));
                 }
                 *(comp->highest_to_commit_vs) = new_entry->req_canbe_exed;
             }
