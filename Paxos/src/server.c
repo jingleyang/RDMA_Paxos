@@ -25,5 +25,5 @@ recv(int sockfd, void *buf, size_t len, int flags)
 		rsm_op(consensus_comp, sockfd, buf, len);
 	}
 
-	//return to process_req(buf) and then sned back
+	//return to process_req(buf)
 }
