@@ -28,6 +28,7 @@ typedef struct consensus_component_t{
     size_t my_sock_len;
 
     /* lock */
+    pthread_mutex_t mutex;
 }consensus_component;
 
 consensus_component* init_consensus_comp(const char* config_path, const char* log_path, node_id_t node_id, const char* start_mode){
@@ -78,6 +79,8 @@ consensus_component* init_consensus_comp(const char* config_path, const char* lo
         comp->committed->req_id = 0;
 
         comp->db_ptr = initialize_db(comp->db_name, 0);
+
+        comp->mutex = PTHREAD_MUTEX_INITIALIZER;
     }
     return comp;
 }
@@ -94,8 +97,9 @@ static void view_stamp_inc(view_stamp* vs){
     return;
 };
 
-static int rsm_op(struct consensus_component_t* comp, size_t data_size, void* data){
+static int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     int ret = 1;
+    pthread_mutex_lock(&comp->mutex);
     view_stamp next = get_next_view_stamp(comp);
 
     /* record the data persistently */
@@ -112,6 +116,7 @@ static int rsm_op(struct consensus_component_t* comp, size_t data_size, void* da
     ret = 0;
     view_stamp_inc(comp->highest_seen_vs);
     log_entry_t* new_entry = append_log_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, RDMA_DATA->log);
+    pthread_mutex_unlock(&comp->mutex);
     if(comp->group_size > 1){
         //TODO RDMA write
         for (i = 0; i < comp->group_size; i++) {
@@ -139,6 +144,7 @@ handle_submit_req_exit:
     if(record_data != NULL){
         free(record_data);
     }
+    //TODO: do we need the lock here?
     view_stamp_inc(comp->committed);
     return ret;
 }

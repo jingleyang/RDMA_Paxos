@@ -22,7 +22,7 @@ recv(int sockfd, void *buf, size_t len, int flags)
 
 	if (consensus_comp->my_role == LEADER)
 	{
-		rsm_op(consensus_comp, sockfd, buf, len);
+		rsm_op(consensus_comp, buf, len, sockfd);
 	}
 
 	//return to process_req(buf)
