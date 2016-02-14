@@ -1,3 +1,5 @@
+#ifdef __SPEC_HOOK___libc_start_main
+
 extern "C" void __tern_prog_begin(void);  //  lib/runtime/helper.cpp
 
 typedef int (*main_type)(int, char**, char**);
@@ -86,5 +88,6 @@ extern "C" int __libc_start_main(
   ret = orig_func(func_ptr, argc, argv, init_func, fini_func,
                   rtld_fini_func, stack_end);
 
-	return ret;
+  return ret;
 }
+#endif
