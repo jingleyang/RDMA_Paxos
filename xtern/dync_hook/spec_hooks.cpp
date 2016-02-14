@@ -1,3 +1,11 @@
+#include <string.h>
+
+#ifdef PRINT_DEBUG
+#  define dprintf(fmt...) fprintf(stderr, fmt)
+#else
+#  define dprintf(fmt...)
+#endif
+
 #ifdef __SPEC_HOOK___libc_start_main
 
 extern "C" void __tern_prog_begin(void);  //  lib/runtime/helper.cpp
@@ -17,6 +25,9 @@ void tern_init_func(int argc, char **argv, char **env){
     saved_init_func(argc, argv, env);
   __tern_prog_begin();
 }
+
+typedef void (*fini_type)(void*);
+fini_type saved_fini_func = NULL;
 
 extern "C" int my_main(int argc, char **pt, char **aa)
 {

@@ -1,3 +1,6 @@
+#include <stdio.h>
+#include <dlfcn.h>
+#include <stdlib.h>
 #include <tern/runtime/runtime.h>
 
 using namespace tern;

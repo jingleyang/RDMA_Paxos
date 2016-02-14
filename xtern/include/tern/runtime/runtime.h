@@ -1,3 +1,5 @@
+#include <pthread.h>
+
 namespace tern {
 
 struct Runtime {
