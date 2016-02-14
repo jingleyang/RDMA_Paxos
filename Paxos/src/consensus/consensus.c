@@ -214,7 +214,13 @@ static void handle_accept_req(consensus_component* comp)
             //TODO: need to register a memory for this
             accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
 
-            strncpy((char*)(SHM_DATA->shm[new_entry->node_id]) + comp->node_id * ACCEPT_ACK_SIZE, reply, ACCEPT_ACK_SIZE);
+            accept_ack* offset = (accept_ack*)(SHM_DATA->shm[new_entry->node_id]);
+            for (int i = 0; i < com->node_id; ++i)
+            {
+                offset++;
+            }
+
+            strncpy(offset, reply, ACCEPT_ACK_SIZE);
 
             int my_socket = socket(AF_INET, SOCK_STREAM, 0);
             connect(my_socket, (struct sockaddr*)&comp->my_address, comp->my_sock_len);
