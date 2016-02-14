@@ -1,7 +1,10 @@
 /* InfiniBand device */
 extern ib_device_t *ib_device;
 #define IBDEV ib_device
-#define RDMA_DATA ((rdma_data_t*)dare_ib_device->udata)
+#define RDMA_DATA ((rdma_data_t*)ib_device->udata)
+
+extern shm_data_t *shm_data;
+#define SHM_DATA shm_data
 
 typedef struct request_record_t{
     struct timeval created_time; // data created timestamp
@@ -115,11 +118,18 @@ static int rsm_op(struct consensus_component_t* comp, void* data, size_t data_si
     }
     ret = 0;
     view_stamp_inc(comp->highest_seen_vs);
-    log_entry_t* new_entry = append_log_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, RDMA_DATA->log);
+    //log_entry_t* new_entry = append_log_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, RDMA_DATA->log);
+    log_entry_t* new_entry = append_log_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, SHM_DATA->log);
+    SHM_DATA[comp->node_id]++;
     pthread_mutex_unlock(&comp->mutex);
     if(comp->group_size > 1){
-        //TODO RDMA write
         for (i = 0; i < comp->group_size; i++) {
+            //TODO RDMA write
+            //strncpy(char*dest,char*src,size_tn)
+            if (i == comp->node_id)
+                continue;
+            strncpy(SHM_DATA->shm[i], new_entry, REQ_RECORD_SIZE(record_data));
+            SHM_DATA->shm[i]++;
         }
 
 recheck:
@@ -167,9 +177,10 @@ static void handle_accept_req(consensus_component* comp)
 {
     while (TRUE)
     {
-        log_entry_t* new_entry = log_add_new_entry(RDMA_DATA->log);
+        //log_entry_t* new_entry = log_add_new_entry(RDMA_DATA->log);
+        log_entry_t* new_entry = log_add_new_entry(SHM_DATA->log);
         
-        if ()
+        if (new_entry->req_canbe_exed.view_id != 0)
         {
             CON_LOG(comp, "Node %d Handle Accept Req.\n", comp->node_id);
             if(new_entry->msg_vs.view_id < comp->cur_view->view_id){
@@ -197,10 +208,13 @@ static void handle_accept_req(consensus_component* comp)
 
             // record the data persistently 
             store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data)
-
+            SHM_DATA->shm[comp->node_id]++;
+            SHM_DATA->shm[new_entry->node_id]++;
             //TODO: RDMA reply to the leader
             //TODO: need to register a memory for this
             accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
+
+            strncpy((char*)(SHM_DATA->shm[new_entry->node_id]) + comp->node_id * ACCEPT_ACK_SIZE, reply, ACCEPT_ACK_SIZE);
 
             int my_socket = socket(AF_INET, SOCK_STREAM, 0);
             connect(my_socket, (struct sockaddr*)&comp->my_address, comp->my_sock_len);

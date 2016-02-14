@@ -10,5 +10,6 @@ struct rdma_data_t {
 	rdma_input_t* input;
 	struct rb_root endpoints;   // RB-tree with remote endpoints
 	rdma_config_t config; // configuration 
+	log_t  *log;
 };
 typedef struct rdma_data_t rdma_data_t;

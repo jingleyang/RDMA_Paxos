@@ -99,12 +99,7 @@ static log_entry_t* log_get_entry(log_t* log, uint64_t *offset)
 }
 
 static log_entry_t* log_append_entry(consensus_component* comp, size_t data_size, void* data, view_stamp* vs, log_t* log)
-{
-
-    uint64_t offset = log->tail;
-    log_entry_t *last_entry = log_get_entry(log, &offset);
-    uint64_t idx = last_entry ? last_entry->idx + 1 : 1;
-    
+{   
     /* Create new entry */
     log_entry_t *entry = log_add_new_entry(log);
 

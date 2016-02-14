@@ -5,7 +5,6 @@ uint64_t rdma_state;
 
 FILE * rdma_log_fp;
 
-/* server data */
 rdma_data_t rdma_data;
 /* ================================================================== */
 /* libEV events */

@@ -16,6 +16,7 @@ recv(int sockfd, void *buf, size_t len, int flags)
     char* start_mode = '';
     struct consensus_component* consensus_comp = init_consensus_comp(config_path, log_path, node_id, start_mode);
 
+    shm_init(consensus_comp->node_id, consensus_comp->group_size);
 	// initialize RDMA
     rdma_init(consensus_comp->node_id, consensus_comp->group_size, log_path, start_mode);
 	// TODO: only for the first time
