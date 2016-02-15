@@ -1,0 +1,1 @@
+./mongoose -I /usr/bin/php-cgi -p 7000 -t 8 &
