@@ -1,14 +1,10 @@
-#include <string.h>
+#include <string>
+#include <stdio.h>
+#include <dlfcn.h>
+#include <stdlib.h>
+#include "helper.h"
 
-#ifdef PRINT_DEBUG
-#  define dprintf(fmt...) fprintf(stderr, fmt)
-#else
 #  define dprintf(fmt...)
-#endif
-
-#ifdef __SPEC_HOOK___libc_start_main
-
-extern "C" void __tern_prog_begin(void);  //  lib/runtime/helper.cpp
 
 typedef int (*main_type)(int, char**, char**);
 
@@ -64,8 +60,7 @@ extern "C" int __libc_start_main(
   size_t lastSlash = libPath.find_last_of("/");
   libPath = libPath.substr(0, lastSlash);
   libPath += "/libc.so.6";
-  libPath = "/lib/x86_64-linux-gnu/libc.so.6"; // Heming hack: weird thing on bug03.
-
+  libPath = "/lib/x86_64-linux-gnu/libc.so.6";
   if(!(handle=dlopen(libPath.c_str(), RTLD_LAZY))) {
     puts("dlopen error");
     abort();
@@ -80,25 +75,17 @@ extern "C" int __libc_start_main(
 
   dlclose(handle);
 
-#ifdef __USE_TERN_RUNTIME
   dprintf("%04d: __libc_start_main is hooked.\n", (int) pthread_self());
-  //fprintf(stderr, "%04d: __tern_prog_begin() called.\n", (int) pthread_self());
+
   args.argv = argv;
   args.main_func = (main_type)func_ptr;
   saved_init_func = (main_type)init_func;
-  // note that we don't hook fini_func because it appears that fini_func
-  // is only called for statically linked libc, whereas rtld_fini_func is
-  // called regardless
+
   saved_fini_func = (fini_type)rtld_fini_func;
   ret = orig_func((void*)my_main, argc, (char**)(&args),
                   (fnptr_type)tern_init_func, (fnptr_type)fini_func,
                   rtld_fini_func, stack_end);
-                  //(fnptr_type)tern_fini_func, stack_end);
-  return ret;
-#endif
-  ret = orig_func(func_ptr, argc, argv, init_func, fini_func,
-                  rtld_fini_func, stack_end);
 
   return ret;
+
 }
-#endif
