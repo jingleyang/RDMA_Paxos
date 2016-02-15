@@ -32,8 +32,6 @@ void tern_init_func(int argc, char **argv, char **env){
 
   if (consensus_comp->my_role == SECONDARY)
   {
-    int my_socket = socket(AF_INET, SOCK_STREAM, 0);
-    connect(my_socket, (struct sockaddr*)&comp->my_address, comp->my_sock_len);
     handle_accept_req(consensus_comp);
   }
 }

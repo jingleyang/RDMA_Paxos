@@ -179,6 +179,8 @@ static int reached_quorum(request_record* record, int group_size){
 
 static void handle_accept_req(consensus_component* comp)
 {
+    int my_socket = socket(AF_INET, SOCK_STREAM, 0);
+    connect(my_socket, (struct sockaddr*)&comp->my_address, comp->my_sock_len);
     while (TRUE)
     {
         //log_entry_t* new_entry = log_add_new_entry(RDMA_DATA->log);
@@ -226,13 +228,16 @@ static void handle_accept_req(consensus_component* comp)
 
             strncpy(offset, reply, ACCEPT_ACK_SIZE);
 
+            size_t data_size;
+            record_data = NULL;
             if(view_stamp_comp(&new_entry->req_canbe_exed, comp->committed) > 0)
             {
                 db_key_type start = vstol(comp->committed)+1;
                 db_key_type end = vstol(&new_entry->req_canbe_exed);
                 for(db_key_type index = start; index <= end; index++)
                 {
-                    //send(my_socket, new_entry->data, new_entry->data_size, 0));
+                    retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&record_data);
+                    send(my_socket, record_data, data_size, 0);
                 }
                 *(comp->highest_to_commit_vs) = new_entry->req_canbe_exed;
             }
