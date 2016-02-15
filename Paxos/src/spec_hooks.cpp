@@ -23,10 +23,10 @@ void tern_init_func(int argc, char **argv, char **env){
   if(saved_init_func)
     saved_init_func(argc, argv, env);
 
-  char* config_path = "";
-  char* log_path = "";
+  char* config_path = "../target/nodes.local.cfg";
+  char* log_path = NULL;
   uint32_t node_id = 0;
-  char* start_mode = '';
+  char* start_mode = 's';
   init_consensus_comp(config_path, log_path, node_id, start_mode);
   shm_init(consensus_comp->node_id, consensus_comp->group_size);
 
