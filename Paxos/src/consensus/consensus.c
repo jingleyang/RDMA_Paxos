@@ -226,9 +226,6 @@ static void handle_accept_req(consensus_component* comp)
 
             strncpy(offset, reply, ACCEPT_ACK_SIZE);
 
-            int my_socket = socket(AF_INET, SOCK_STREAM, 0);
-            connect(my_socket, (struct sockaddr*)&comp->my_address, comp->my_sock_len);
-
             if(view_stamp_comp(&new_entry->req_canbe_exed, comp->committed) > 0)
             {
                 db_key_type start = vstol(comp->committed)+1;

@@ -1,7 +1,9 @@
+#include "../include/shm/shm.h"
+
 shm_data_t *shm_data;
 #define SHM_DATA shm_data
 
-init_shm(node_id_t node_id, int size)
+void init_shm(node_id_t node_id, int size)
 {
 	key_t key[size] = {5677, 5678, 5679};
 	int shmid[size];

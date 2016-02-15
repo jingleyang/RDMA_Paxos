@@ -10,6 +10,16 @@ typedef enum con_role_t{
     SECONDARY = 1,
 }con_role;
 
-struct consensus_component_t* init_consensus_comp(const char* config_path, const char* log_path, uint32_t node_id, const char* start_mode);
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+	struct consensus_component_t* init_consensus_comp(const char* config_path, const char* log_path, uint32_t node_id, const char* start_mode);
+	int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size);
+	void handle_accept_req(consensus_component_t* comp);
+	
+#ifdef __cplusplus
+}
+#endif
 
 #endif

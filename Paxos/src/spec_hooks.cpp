@@ -2,9 +2,12 @@
 #include <stdio.h>
 #include <dlfcn.h>
 #include <stdlib.h>
-#include "helper.h"
+#include "include/consensus/consensus.h"
+#include "include/shm/shm.h"
 
 #define dprintf(fmt...)
+
+consensus_component* consensus_comp;
 
 typedef int (*main_type)(int, char**, char**);
 
@@ -19,7 +22,20 @@ void tern_init_func(int argc, char **argv, char **env){
   dprintf("%04d: __tern_init_func() called.\n", (int) pthread_self());
   if(saved_init_func)
     saved_init_func(argc, argv, env);
-  __tern_prog_begin();
+
+  char* config_path = "";
+  char* log_path = "";
+  uint32_t node_id = 0;
+  char* start_mode = '';
+  init_consensus_comp(config_path, log_path, node_id, start_mode);
+  shm_init(consensus_comp->node_id, consensus_comp->group_size);
+
+  if (consensus_comp->my_role == SECONDARY)
+  {
+    int my_socket = socket(AF_INET, SOCK_STREAM, 0);
+    connect(my_socket, (struct sockaddr*)&comp->my_address, comp->my_sock_len);
+    handle_accept_req(consensus_comp);
+  }
 }
 
 typedef void (*fini_type)(void*);
@@ -88,4 +104,19 @@ extern "C" int __libc_start_main(
 
   return ret;
 
+}
+
+extern "C" ssize_t recv(int sockfd, void *buf, size_t len, int flags)
+{
+  typedef ssize_t (*orig_recv_type)(int, void *, size_t, int);
+  orig_recv_type orig_recv;
+  orig_recv = (orig_recv_type) dlsym(handle, "recv");
+  ssize_t ret = orig_recv(sockfd, buf, len, flags);
+
+  if (consensus_comp->my_role == LEADER)
+  {
+    rsm_op(consensus_comp, buf, len);
+  }
+
+  return ret;
 }
