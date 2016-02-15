@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include "helper.h"
 
-#  define dprintf(fmt...)
+#define dprintf(fmt...)
 
 typedef int (*main_type)(int, char**, char**);
 
