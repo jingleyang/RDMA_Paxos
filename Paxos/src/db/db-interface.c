@@ -1,4 +1,25 @@
+#include <stdlib.h>
+#include <sys/time.h>
+#include <sys/stat.h>
+#include <string.h>
+#include <errno.h>
 #include <db.h>
+#include "../include/db/db-interface.h"
+#include "../include/util/debug.h"
+
+const char* db_dir="./.db";
+
+struct db_t{
+    DB* bdb_ptr;
+};
+
+void mk_path(char* dest,const char* prefix,const char* db_name){
+    memcpy(dest,prefix,strlen(prefix));
+    dest[strlen(prefix)] = '/';
+    memcpy(dest+strlen(prefix)+1,db_name,strlen(db_name));
+    dest[strlen(prefix)+strlen(db_name)+1] = '\0';
+    return;
+}
 
 db* initialize_db(const char* db_name, uint32_t flag){
     db* db_ptr = NULL;

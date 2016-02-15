@@ -1,3 +1,5 @@
+#include "../include/util/common-structure.h"
+
 int view_stamp_comp(view_stamp* op1,view_stamp* op2){
     if(op1->view_id<op2->view_id){
         return -1;

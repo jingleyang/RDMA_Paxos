@@ -1,3 +1,7 @@
+# Set the root directory of this project's object files
+
+# Set the directory root of this project's source files
+
 INC_DIRS=-I$(SRC_ROOT)/include/ -I$(OBJ_ROOT)/include -I.
 STD_LIBS=-lsupc++ -lpthread -lstdc++ -lrt
 TERN_LIBS=-L$(OBJ_ROOT)/lib/ -lruntime -lcommon

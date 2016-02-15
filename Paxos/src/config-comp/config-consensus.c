@@ -1,4 +1,6 @@
-int consensus_read_config(struct consensus_component_t* comp, const char* config_path){
+#include "../include/config-comp/config-comp.h"
+
+int consensus_read_config(struct consensus_component* comp, const char* config_path){
     config_t config_file;
     config_init(&config_file);
 
@@ -72,4 +74,4 @@ goto_config_error:
     err_log("%s:%d - %s\n", config_error_file(&config_file), config_error_line(&config_file), config_error_text(&config_file));
     config_destroy(&config_file);
     return -1;
-}
+};

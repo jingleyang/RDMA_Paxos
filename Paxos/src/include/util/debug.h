@@ -1,3 +1,6 @@
+#ifndef DEBUG_H
+#define DEBUG_H
+
 #define con_err_log(args...) do { \
     struct timeval tv; \
     gettimeofday(&tv,0); \
@@ -45,3 +48,5 @@
     fflush(stream); \
     return (rc);  \
 } while(0)
+
+#endif

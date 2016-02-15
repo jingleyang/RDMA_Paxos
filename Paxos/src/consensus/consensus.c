@@ -1,3 +1,7 @@
+#include "../include/consensus/consensus.h"
+#include "../include/consensus/consensus-msg.h"
+#include "../include/db/db-interface.h"
+
 /* InfiniBand device */
 extern ib_device_t *ib_device;
 #define IBDEV ib_device
