@@ -1,6 +1,7 @@
 #ifndef CONSENSUS_H
 
 #define CONSENSUS_H
+#include "../util/common-header.h"
 
 typedef uint64_t db_key_type;
 struct consensus_component_t;
