@@ -3,6 +3,9 @@
 
 #include "../include/db/db-interface.h"
 #include "../include/log/log.h"
+#include "../include/shm/shm.h"
+
+#include <sys/stat.h>
 
 /* InfiniBand device */
 /*
@@ -11,8 +14,8 @@ extern ib_device_t *ib_device;
 #define RDMA_DATA ((rdma_data_t*)ib_device->udata)
 */
 
-extern shm_data_t *shm_data;
-#define SHM_DATA shm_data
+extern shm_data *shm;
+#define SHM_DATA shm
 
 typedef struct request_record_t{
     struct timeval created_time; // data created timestamp
@@ -34,6 +37,7 @@ typedef struct consensus_component_t{
     view_stamp* highest_seen_vs; 
     view_stamp* committed;
 
+    char* db_name;
     db* db_ptr;
     struct sockaddr_in my_address;
     size_t my_sock_len;
@@ -51,9 +55,9 @@ consensus_component* init_consensus_comp(const char* config_path, const char* lo
     if(NULL != comp){
         comp->node_id = node_id;
         if(*start_mode == 's'){
-            comp->cur_view.view_id = 1;
-            comp->cur_view.leader_id = comp->node_id;
-            comp->cur_view.req_id = 0;
+            comp->cur_view->view_id = 1;
+            comp->cur_view->leader_id = comp->node_id;
+            comp->cur_view->req_id = 0;
         }
 
         int build_log_ret = 0;
@@ -107,6 +111,20 @@ static void view_stamp_inc(view_stamp* vs){
     vs->req_id++;
     return;
 };
+
+static void update_record(request_record* record, uint32_t node_id){
+    record->bit_map = (record->bit_map | (1<<node_id));
+    return;
+}
+
+static int reached_quorum(request_record* record, int group_size){
+    // this may be compatibility issue 
+    if(__builtin_popcountl(record->bit_map) >= ((group_size/2)+1)){
+        return 1;
+    }else{
+        return 0;
+    }
+}
 
 int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     int ret = 1;
@@ -165,20 +183,6 @@ handle_submit_req_exit:
     //TODO: do we need the lock here?
     view_stamp_inc(comp->committed);
     return ret;
-}
-
-static void update_record(request_record* record, uint32_t node_id){
-    record->bit_map = (record->bit_map | (1<<node_id));
-    return;
-}
-
-static int reached_quorum(request_record* record, int group_size){
-    // this may be compatibility issue 
-    if(__builtin_popcountl(record->bit_map) >= ((group_size/2)+1)){
-        return 1;
-    }else{
-        return 0;
-    }
 }
 
 void handle_accept_req(consensus_component* comp)

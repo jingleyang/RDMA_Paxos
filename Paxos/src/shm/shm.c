@@ -3,7 +3,7 @@
 
 struct shm_data_t {
 	log  *lg;
-	log_entry* shm[3];//TODO
+	log_entry* shm[MAX_SERVER_COUNT];
 };
 
 shm_data *shm;

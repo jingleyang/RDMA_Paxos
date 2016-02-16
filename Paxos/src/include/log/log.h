@@ -7,4 +7,4 @@ typedef struct log_entry_t log_entry;
 
 typedef struct log_t log;
 
-log_entry* log_append_entry(consensus_component_t* comp, size_t data_size, void* data, view_stamp* vs, log* lg)
+log_entry* log_append_entry(struct consensus_component_t* comp, size_t data_size, void* data, view_stamp* vs, log* lg)

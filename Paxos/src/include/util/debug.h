@@ -18,7 +18,7 @@
 
 #define safe_rec_con_log(x,args...) {if(NULL!=(x)){rec_con_log((x),args);}}
 
-#define CON_LOG(x,args...) {if((x)->sys_log){safe_rec_con_log(((x)->con_log_file),args)}}
+#define CON_LOG(x,args...) {safe_rec_con_log(((x)->con_log_file),args)}
 
 #define rdma_info(stream, fmt, ...) do {\
     fprintf(stream, fmt, ##__VA_ARGS__); \
