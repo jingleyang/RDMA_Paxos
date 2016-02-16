@@ -1,7 +1,6 @@
 #include "../include/consensus/consensus.h"
 #include "../include/consensus/consensus-msg.h"
 
-/* invoke method */
 #include "../include/db/db-interface.h"
 #include "../include/log/log.h"
 
@@ -127,8 +126,8 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     }
     ret = 0;
     view_stamp_inc(comp->highest_seen_vs);
-    //log_entry_t* new_entry = log_append_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, RDMA_DATA->log);
-    log_entry_t* new_entry = log_append_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, SHM_DATA->log);
+    //log_entry* new_entry = log_append_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, RDMA_DATA->log);
+    log_entry* new_entry = log_append_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, SHM_DATA->log);
     SHM_DATA[comp->node_id]++;
     pthread_mutex_unlock(&comp->mutex);
     if(comp->group_size > 1){
@@ -189,7 +188,7 @@ void handle_accept_req(consensus_component* comp)
     while (1)
     {
         //log_entry_t* new_entry = log_add_new_entry(RDMA_DATA->log);
-        log_entry_t* new_entry = log_add_new_entry(SHM_DATA->log);
+        log_entry* new_entry = log_add_new_entry(SHM_DATA->log);
         
         if (new_entry->req_canbe_exed.view_id != 0)
         {
