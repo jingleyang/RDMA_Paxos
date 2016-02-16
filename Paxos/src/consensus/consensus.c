@@ -4,6 +4,7 @@
 #include "../include/db/db-interface.h"
 #include "../include/log/log.h"
 #include "../include/shm/shm.h"
+#include "../include/config-comp/config-comp.h"
 
 #include <sys/stat.h>
 
@@ -14,7 +15,7 @@ extern ib_device_t *ib_device;
 #define RDMA_DATA ((rdma_data_t*)ib_device->udata)
 */
 
-extern shm_data *shm;
+extern shm_data* shm;
 #define SHM_DATA shm
 
 typedef struct request_record_t{
@@ -33,9 +34,9 @@ typedef struct consensus_component_t{
 
     FILE* con_log_file;
 
-    view* cur_view;
-    view_stamp* highest_seen_vs; 
-    view_stamp* committed;
+    view cur_view;
+    view_stamp highest_seen_vs; 
+    view_stamp committed;
 
     char* db_name;
     db* db_ptr;
@@ -55,9 +56,9 @@ consensus_component* init_consensus_comp(const char* config_path, const char* lo
     if(NULL != comp){
         comp->node_id = node_id;
         if(*start_mode == 's'){
-            comp->cur_view->view_id = 1;
-            comp->cur_view->leader_id = comp->node_id;
-            comp->cur_view->req_id = 0;
+            comp->cur_viewview_id = 1;
+            comp->cur_view.leader_id = comp->node_id;
+            comp->cur_view.req_id = 0;
         }
 
         int build_log_ret = 0;
@@ -88,10 +89,10 @@ consensus_component* init_consensus_comp(const char* config_path, const char* lo
         }else{
             comp->my_role = SECONDARY;
         }
-        comp->highest_seen_vs->view_id = 1;
-        comp->highest_seen_vs->req_id = 0;
-        comp->committed->view_id = 1; 
-        comp->committed->req_id = 0;
+        comp->highest_seen_vs.view_id = 1;
+        comp->highest_seen_vs.req_id = 0;
+        comp->committed.view_id = 1; 
+        comp->committed.req_id = 0;
 
         comp->db_ptr = initialize_db(comp->db_name, 0);
 
@@ -102,13 +103,13 @@ consensus_component* init_consensus_comp(const char* config_path, const char* lo
 
 static view_stamp get_next_view_stamp(consensus_component* comp){
     view_stamp next_vs;
-    next_vs.view_id = comp->highest_seen_vs->view_id;
-    next_vs.req_id = (comp->highest_seen_vs->req_id + 1);
+    next_vs.view_id = comp->highest_seen_vs.view_id;
+    next_vs.req_id = (comp->highest_seen_vs.req_id + 1);
     return next_vs;
 };
 
-static void view_stamp_inc(view_stamp* vs){
-    vs->req_id++;
+static void view_stamp_inc(view_stamp vs){
+    vs.req_id++;
     return;
 };
 
@@ -145,8 +146,8 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     ret = 0;
     view_stamp_inc(comp->highest_seen_vs);
     //log_entry* new_entry = log_append_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, RDMA_DATA->log);
-    log_entry* new_entry = log_append_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, SHM_DATA->log);
-    SHM_DATA[comp->node_id]++;
+    log_entry* new_entry = log_append_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, SHM_DATA->shm_log);
+    SHM_DATA->shm[comp->node_id]++;
     pthread_mutex_unlock(&comp->mutex);
     if(comp->group_size > 1){
         for (int i = 0; i < comp->group_size; i++) {
@@ -192,7 +193,7 @@ void handle_accept_req(consensus_component* comp)
     while (1)
     {
         //log_entry_t* new_entry = log_add_new_entry(RDMA_DATA->log);
-        log_entry* new_entry = log_add_new_entry(SHM_DATA->log);
+        log_entry* new_entry = log_add_new_entry(SHM_DATA->shm_log);
         
         if (new_entry->req_canbe_exed.view_id != 0)
         {

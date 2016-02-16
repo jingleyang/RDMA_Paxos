@@ -1,14 +1,14 @@
 #include "../include/util/common-structure.h"
 
-int view_stamp_comp(view_stamp* op1,view_stamp* op2){
-    if(op1->view_id<op2->view_id){
+int view_stamp_comp(view_stamp op1,view_stamp op2){
+    if(op1.view_id<op2.view_id){
         return -1;
-    }else if(op1->view_id>op2->view_id){
+    }else if(op1.view_id>op2.view_id){
         return 1;
     }else{
-        if(op1->req_id>op2->req_id){
+        if(op1.req_id>op2.req_id){
             return 1;
-        }else if(op1->req_id<op2->req_id){
+        }else if(op1.req_id<op2.req_id){
             return -1;
         }else{
             return 0;
@@ -17,9 +17,9 @@ int view_stamp_comp(view_stamp* op1,view_stamp* op2){
 }
 
 /* view stamp to long */
-uint64_t vstol(view_stamp* vs){
-    uint64_t result = ((uint64_t)vs->req_id)&0xFFFFFFFFl;
-    uint64_t temp = (uint64_t)vs->view_id&0xFFFFFFFFl;
+uint64_t vstol(view_stamp vs){
+    uint64_t result = ((uint64_t)vs.req_id)&0xFFFFFFFFl;
+    uint64_t temp = (uint64_t)vs.view_id&0xFFFFFFFFl;
     result += temp<<32;
     return result;
 };
