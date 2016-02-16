@@ -8,16 +8,6 @@
 
 #include <sys/stat.h>
 
-/* InfiniBand device */
-/*
-extern ib_device_t *ib_device;
-#define IBDEV ib_device
-#define RDMA_DATA ((rdma_data_t*)ib_device->udata)
-*/
-
-extern shm_data* shm;
-#define SHM_DATA shm
-
 typedef struct request_record_t{
     struct timeval created_time; // data created timestamp
     uint64_t bit_map; // now we assume the maximal replica group size is 64;
@@ -145,9 +135,8 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     }
     ret = 0;
     view_stamp_inc(comp->highest_seen_vs);
-    //log_entry* new_entry = log_append_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, RDMA_DATA->log);
-    log_entry* new_entry = log_append_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, SHM_DATA->shm_log);
-    SHM_DATA->shm[comp->node_id]++;
+    log_entry* new_entry = log_append_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, shared_memory.shm_log);
+    shared_memory.shm[comp->node_id] = shared_memory.shm[comp->node_id] + 1;
     pthread_mutex_unlock(&comp->mutex);
     if(comp->group_size > 1){
         for (int i = 0; i < comp->group_size; i++) {
@@ -155,8 +144,8 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
             //strncpy(char*dest,char*src,size_tn)
             if (i == comp->node_id)
                 continue;
-            strncpy(SHM_DATA->shm[i], new_entry, REQ_RECORD_SIZE(record_data));
-            SHM_DATA->shm[i]++;
+            memcpy(shared_memory.shm[i], new_entry, REQ_RECORD_SIZE(record_data));
+            shared_memory.shm[i] = shared_memory.shm[i] + 1;
         }
 
 recheck:
@@ -202,7 +191,7 @@ void handle_accept_req(consensus_component* comp)
     while (1)
     {
         //log_entry_t* new_entry = log_add_new_entry(RDMA_DATA->log);
-        log_entry* new_entry = log_add_new_entry(SHM_DATA->shm_log);
+        log_entry* new_entry = log_add_new_entry(shared_memory.shm_log);
         
         if (new_entry->req_canbe_exed.view_id != 0)
         {
@@ -218,11 +207,11 @@ void handle_accept_req(consensus_component* comp)
             }
 
             // update highest seen request
-            if(view_stamp_comp(&new_entry->msg_vs, comp->highest_seen_vs) > 0){
+            if(view_stamp_comp(new_entry->msg_vs, comp->highest_seen_vs) > 0){
                 comp->highest_seen_vs = new_entry->msg_vs;
             }
 
-            db_key_type record_no = vstol(&new_entry->msg_vs);
+            db_key_type record_no = vstol(new_entry->msg_vs);
             request_record* origin_data = (request_record*)new_entry->data;
             request_record* record_data = (request_record*)malloc(REQ_RECORD_SIZE(origin_data));
 
@@ -232,19 +221,19 @@ void handle_accept_req(consensus_component* comp)
 
             // record the data persistently 
             store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data)
-            SHM_DATA->shm[comp->node_id]++;
-            SHM_DATA->shm[new_entry->node_id]++;
+            shared_memory.shm[comp->node_id]++;
+            shared_memory.shm[new_entry->node_id]++;
             //TODO: RDMA reply to the leader
             //TODO: need to register a memory for this
             accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
 
-            accept_ack* offset = (accept_ack*)(SHM_DATA->shm[new_entry->node_id]);
+            accept_ack* offset = (accept_ack*)(shared_memory.shm[new_entry->node_id]);
             for (int i = 0; i < comp->node_id; ++i)
             {
                 offset++;
             }
 
-            strncpy(offset, reply, ACCEPT_ACK_SIZE);
+            memcpy(offset, reply, ACCEPT_ACK_SIZE);
 
             size_t data_size;
             record_data = NULL;

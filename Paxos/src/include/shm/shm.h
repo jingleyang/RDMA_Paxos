@@ -4,6 +4,8 @@
 
 typedef struct shm_data_t shm_data;
 
+extern shm_data shm;
+
 void init_shm(node_id_t node_id, int size);
 
 #endif
