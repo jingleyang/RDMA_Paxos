@@ -2,12 +2,11 @@
 #include <stdio.h>
 #include <dlfcn.h>
 #include <stdlib.h>
-#include "include/consensus/consensus.h"
-#include "include/shm/shm.h"
+#include "include/rsm-interface.h"
 
 #define dprintf(fmt...)
 
-consensus_component* consensus_comp;
+struct consensus_component_t* consensus_comp;
 
 typedef int (*main_type)(int, char**, char**);
 
@@ -27,7 +26,7 @@ void tern_init_func(int argc, char **argv, char **env){
   char* log_path = NULL;
   uint32_t node_id = 0;
   char* start_mode = 's';
-  init_consensus_comp(config_path, log_path, node_id, start_mode);
+  consensus_comp = init_consensus_comp(config_path, log_path, node_id, start_mode);
   shm_init(consensus_comp->node_id, consensus_comp->group_size);
 
   if (consensus_comp->my_role == SECONDARY)

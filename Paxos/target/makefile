@@ -9,8 +9,6 @@ RM := rm -rf
 # All of the sources participating in the build are defined here
 -include sources.mk
 -include src/util/subdir.mk
--include src/replica-sys/subdir.mk
--include src/proxy/subdir.mk
 -include src/db/subdir.mk
 -include src/consensus/subdir.mk
 -include src/config-comp/subdir.mk

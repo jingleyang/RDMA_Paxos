@@ -2,6 +2,7 @@
 
 #define CONSENSUS_H
 #include "../util/common-header.h"
+#include "../rsm-interface.h"
 
 typedef uint64_t db_key_type;
 struct consensus_component_t;

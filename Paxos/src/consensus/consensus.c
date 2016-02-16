@@ -1,7 +1,7 @@
 #include "../include/consensus/consensus.h"
 #include "../include/consensus/consensus-msg.h"
 #include "../include/db/db-interface.h"
-#include "../include/shm/shm.h"
+#include "../rsm-interface.h"
 
 /* InfiniBand device */
 extern ib_device_t *ib_device;
