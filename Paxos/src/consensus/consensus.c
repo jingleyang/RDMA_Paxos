@@ -190,8 +190,7 @@ void handle_accept_req(consensus_component* comp)
     connect(my_socket, (struct sockaddr*)&comp->my_address, comp->my_sock_len);
     while (1)
     {
-        //log_entry_t* new_entry = log_add_new_entry(RDMA_DATA->log);
-        log_entry* new_entry = log_add_new_entry(shared_memory.shm_log);
+        log_entry* new_entry = shared_memory.shm[comp->node_id]
         
         if (new_entry->req_canbe_exed.view_id != 0)
         {
@@ -221,10 +220,8 @@ void handle_accept_req(consensus_component* comp)
 
             // record the data persistently 
             store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data)
-            shared_memory.shm[comp->node_id]++;
-            shared_memory.shm[new_entry->node_id]++;
-            //TODO: RDMA reply to the leader
-            //TODO: need to register a memory for this
+            shared_memory.shm[comp->node_id] = shared_memory.shm[comp->node_id] + 1;
+
             accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
 
             accept_ack* offset = (accept_ack*)(shared_memory.shm[new_entry->node_id]);
@@ -234,6 +231,8 @@ void handle_accept_req(consensus_component* comp)
             }
 
             memcpy(offset, reply, ACCEPT_ACK_SIZE);
+
+            shared_memory.shm[new_entry->node_id] = shared_memory.shm[new_entry->node_id] + 1;
 
             size_t data_size;
             record_data = NULL;
