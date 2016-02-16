@@ -19,8 +19,8 @@ typedef struct view_stamp_t{
     req_id_t req_id;
 }view_stamp;
 
-uint64_t vstol(view_stamp* vs);
+uint64_t vstol(view_stamp vs);
 view_stamp ltovs(uint64_t);
-int view_stamp_comp(view_stamp* op1,view_stamp* op2);
+int view_stamp_comp(view_stamp op1,view_stamp op2);
 
 #endif 
