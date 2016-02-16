@@ -27,7 +27,7 @@ endif
 # Add inputs and outputs from these tool invocations to the build variables 
 
 # All Target
-all: server.out
+all: interpose.so
 
 # Tool invocations
 interpose.so: $(OBJS) $(USER_OBJS)
