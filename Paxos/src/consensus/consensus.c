@@ -1,12 +1,16 @@
 #include "../include/consensus/consensus.h"
 #include "../include/consensus/consensus-msg.h"
+
+/* invoke method */
 #include "../include/db/db-interface.h"
-#include "../include/rsm-interface.h"
+#include "../include/log/log.h"
 
 /* InfiniBand device */
+/*
 extern ib_device_t *ib_device;
 #define IBDEV ib_device
 #define RDMA_DATA ((rdma_data_t*)ib_device->udata)
+*/
 
 extern shm_data_t *shm_data;
 #define SHM_DATA shm_data
@@ -43,7 +47,7 @@ consensus_component* init_consensus_comp(const char* config_path, const char* lo
     
     consensus_component* comp = (consensus_component*)malloc(sizeof(consensus_component));
     memset(comp, 0, sizeof(consensus_component));
-    consensus_read_config(consensus_comp, config_path)
+    consensus_read_config(comp, config_path);
 
     if(NULL != comp){
         comp->node_id = node_id;
@@ -105,7 +109,7 @@ static void view_stamp_inc(view_stamp* vs){
     return;
 };
 
-static int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
+int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     int ret = 1;
     pthread_mutex_lock(&comp->mutex);
     view_stamp next = get_next_view_stamp(comp);
@@ -123,12 +127,12 @@ static int rsm_op(struct consensus_component_t* comp, void* data, size_t data_si
     }
     ret = 0;
     view_stamp_inc(comp->highest_seen_vs);
-    //log_entry_t* new_entry = append_log_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, RDMA_DATA->log);
-    log_entry_t* new_entry = append_log_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, SHM_DATA->log);
+    //log_entry_t* new_entry = log_append_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, RDMA_DATA->log);
+    log_entry_t* new_entry = log_append_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, SHM_DATA->log);
     SHM_DATA[comp->node_id]++;
     pthread_mutex_unlock(&comp->mutex);
     if(comp->group_size > 1){
-        for (i = 0; i < comp->group_size; i++) {
+        for (int i = 0; i < comp->group_size; i++) {
             //TODO RDMA write
             //strncpy(char*dest,char*src,size_tn)
             if (i == comp->node_id)
@@ -178,11 +182,11 @@ static int reached_quorum(request_record* record, int group_size){
     }
 }
 
-static void handle_accept_req(consensus_component* comp)
+void handle_accept_req(consensus_component* comp)
 {
     int my_socket = socket(AF_INET, SOCK_STREAM, 0);
     connect(my_socket, (struct sockaddr*)&comp->my_address, comp->my_sock_len);
-    while (TRUE)
+    while (1)
     {
         //log_entry_t* new_entry = log_add_new_entry(RDMA_DATA->log);
         log_entry_t* new_entry = log_add_new_entry(SHM_DATA->log);

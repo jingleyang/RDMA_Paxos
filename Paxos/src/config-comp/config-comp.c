@@ -1,6 +1,6 @@
 #include "../include/config-comp/config-comp.h"
 
-int consensus_read_config(struct consensus_component* comp, const char* config_path){
+int consensus_read_config(consensus_component* comp, const char* config_path){
     config_t config_file;
     config_init(&config_file);
 
