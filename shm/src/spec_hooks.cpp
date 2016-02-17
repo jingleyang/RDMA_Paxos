@@ -25,10 +25,11 @@ void tern_init_func(int argc, char **argv, char **env){
 
   printf("%s\n", "Hello");
 
-  char* config_path = "home/wangcheng/Downloads/RDMA_Paxos_master/Paxos/target/nodes.local.cfg";
+  char* config_path = "/home/wangcheng/Downloads/RDMA_Paxos-master/shm/target/nodes.local.cfg";
   char* log_path = NULL;
   int64_t node_id = 0;
-  char* start_mode = "s";
+  char* start_mode;
+  *start_mode = 's';
   consensus_comp = init_consensus_comp(config_path, log_path, node_id, start_mode);
   init_shm(consensus_comp->node_id, consensus_comp->group_size);
 
