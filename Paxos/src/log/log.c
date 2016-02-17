@@ -1,7 +1,7 @@
 #include "../include/log/log.h"
 
 struct log_entry_t{
-    struct accept_ack ack[MAX_SERVER_COUNT];
+    accept_ack ack[MAX_SERVER_COUNT];
 
     view_stamp msg_vs;
     view_stamp req_canbe_exed;

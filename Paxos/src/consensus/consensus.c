@@ -5,6 +5,7 @@
 #include "../include/log/log.h"
 #include "../include/shm/shm.h"
 #include "../include/config-comp/config-comp.h"
+#include "../include/rsm-interface.h"
 
 #include <sys/stat.h>
 
@@ -85,8 +86,8 @@ consensus_component* init_consensus_comp(const char* config_path, const char* lo
         comp->committed.req_id = 0;
 
         comp->db_ptr = initialize_db(comp->db_name, 0);
-
-        comp->mutex = PTHREAD_MUTEX_INITIALIZER;
+        
+        pthread_mutex_init(&comp->mutex, NULL);
     }
     return comp;
 }
@@ -141,7 +142,7 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     if(comp->group_size > 1){
         for (int i = 0; i < comp->group_size; i++) {
             //TODO RDMA write
-            //strncpy(char*dest,char*src,size_tn)
+
             if (i == comp->node_id)
                 continue;
             memcpy(shared_memory.shm[i], new_entry, REQ_RECORD_SIZE(record_data));
@@ -190,7 +191,7 @@ void handle_accept_req(consensus_component* comp)
     connect(my_socket, (struct sockaddr*)&comp->my_address, comp->my_sock_len);
     while (1)
     {
-        log_entry* new_entry = shared_memory.shm[comp->node_id]
+        log_entry* new_entry = shared_memory.shm[comp->node_id];
         
         if (new_entry->req_canbe_exed.view_id != 0)
         {

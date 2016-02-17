@@ -1,5 +1,6 @@
 #include "../include/shm/shm.h"
 #include "../include/log/log.h"
+#include "../include/rsm-interface.h"
 
 struct shm_data_t {
 	log_entry* shm[MAX_SERVER_COUNT];
