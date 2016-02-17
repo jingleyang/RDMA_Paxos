@@ -14,10 +14,10 @@ EXECUTABLES :=
 # Every subdirectory with source files must be described here
 SUBDIRS := \
 src/util \
-src/replica-sys \
-src/proxy \
 src \
 src/db \
 src/consensus \
 src/config-comp \
+src/shm \
+src/log \
 

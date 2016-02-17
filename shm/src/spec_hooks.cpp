@@ -23,6 +23,8 @@ void tern_init_func(int argc, char **argv, char **env){
   if(saved_init_func)
     saved_init_func(argc, argv, env);
 
+  printf("%s\n", "Hello");
+
   char* config_path = "home/wangcheng/Downloads/RDMA_Paxos_master/Paxos/target/nodes.local.cfg";
   char* log_path = NULL;
   int64_t node_id = 0;
