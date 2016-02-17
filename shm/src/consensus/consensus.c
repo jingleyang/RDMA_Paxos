@@ -3,7 +3,6 @@
 
 #include "../include/shm/shm.h"
 #include "../include/config-comp/config-comp.h"
-#include "../include/rsm-interface.h"
 
 #include <sys/stat.h>
 
