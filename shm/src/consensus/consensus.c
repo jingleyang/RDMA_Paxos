@@ -161,8 +161,9 @@ static void* build_accept_ack(consensus_component* comp, view_stamp* vs){
     return msg;
 };
 
-void handle_accept_req(consensus_component* comp)
+void *handle_accept_req(void *arg)
 {
+    consensus_component* comp = arg;
     int my_socket = socket(AF_INET, SOCK_STREAM, 0);
     connect(my_socket, (struct sockaddr*)&comp->my_address, comp->my_sock_len);
     while (1)

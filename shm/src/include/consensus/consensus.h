@@ -39,7 +39,7 @@ extern "C" {
 
 	consensus_component* init_consensus_comp(const char* config_path, const char* log_path, int64_t node_id, const char* start_mode);
 	int rsm_op(consensus_component* comp, void* data, size_t data_size);
-	void handle_accept_req(consensus_component* comp);
+	void *handle_accept_req(void* arg);
 
 #ifdef __cplusplus
 }

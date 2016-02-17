@@ -13,6 +13,7 @@ int consensus_read_config(struct consensus_component_t* comp, const char* config
     if(!config_lookup_int(&config_file, "group_size", (int*)&group_size)){
         goto goto_config_error;
     }
+    comp->group_size = group_size;
 
     if(group_size <= comp->node_id){
         con_err_log("CONSENSUS : Invalid Node Id\n");
