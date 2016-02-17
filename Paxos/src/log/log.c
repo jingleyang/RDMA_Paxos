@@ -1,26 +1,5 @@
 #include "../include/log/log.h"
 
-struct log_entry_t{
-    accept_ack ack[MAX_SERVER_COUNT];
-
-    view_stamp msg_vs;
-    view_stamp req_canbe_exed;
-    node_id_t node_id;
-    size_t data_size;
-    char data[0];
-};
-
-struct log_t{
-    uint64_t read;
-    uint64_t write; 
-    uint64_t end;
-    uint64_t tail;
-    
-    uint64_t len;
-    
-    uint8_t entries[0];
-};
-
 static inline uint32_t log_entry_len(log_entry* entry)
 {
     return (uint32_t)(sizeof(log_entry) + entry->data_size);

@@ -220,7 +220,7 @@ void handle_accept_req(consensus_component* comp)
             memcpy(record_data->data, origin_data->data, origin_data->data_size);
 
             // record the data persistently 
-            store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data)
+            store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data);
             shared_memory.shm[comp->node_id] = shared_memory.shm[comp->node_id] + 1;
 
             accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
@@ -237,10 +237,10 @@ void handle_accept_req(consensus_component* comp)
 
             size_t data_size;
             record_data = NULL;
-            if(view_stamp_comp(&new_entry->req_canbe_exed, comp->committed) > 0)
+            if(view_stamp_comp(new_entry->req_canbe_exed, comp->committed) > 0)
             {
                 db_key_type start = vstol(comp->committed)+1;
-                db_key_type end = vstol(&new_entry->req_canbe_exed);
+                db_key_type end = vstol(new_entry->req_canbe_exed);
                 for(db_key_type index = start; index <= end; index++)
                 {
                     retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&record_data);
