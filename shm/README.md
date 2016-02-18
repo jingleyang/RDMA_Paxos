@@ -1,2 +1,2 @@
-Remember to run:
-rm -rf ./.db
+Remember to run:  
+`rm -rf ./.db`
