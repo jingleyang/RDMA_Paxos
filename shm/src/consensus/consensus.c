@@ -15,7 +15,6 @@ typedef struct request_record_t{
 #define REQ_RECORD_SIZE(M) (sizeof(request_record)+(M->data_size))
 
 consensus_component* init_consensus_comp(const char* config_path, const char* log_path, node_id_t node_id, const char* start_mode){
-    
     consensus_component* comp = (consensus_component*)malloc(sizeof(consensus_component));
     memset(comp, 0, sizeof(consensus_component));
     consensus_read_config(comp, config_path);
@@ -64,7 +63,6 @@ consensus_component* init_consensus_comp(const char* config_path, const char* lo
         comp->highest_seen_vs.req_id = 0;
         comp->committed.view_id = 1; 
         comp->committed.req_id = 0;
-
         comp->db_ptr = initialize_db(comp->db_name, 0);
         
         pthread_mutex_init(&comp->mutex, NULL);
@@ -115,10 +113,12 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
         goto handle_submit_req_exit;
     }
     ret = 0;
-    view_stamp_inc(comp->highest_seen_vs);
+    comp->highest_seen_vs.req_id = (comp->highest_seen_vs.req_id) + 1;
+    printf("highest seen vs req id is %d\n", comp->highest_seen_vs.req_id);
     log_entry* new_entry = log_append_entry(comp, data_size, data, &next, shared_memory.shm[comp->node_id]);
     shared_memory.shm[comp->node_id] = (log_entry*)((char*)shared_memory.shm[comp->node_id] + log_entry_len(new_entry));//TODO pointer move
     pthread_mutex_unlock(&comp->mutex);
+    CON_LOG(comp, "the new entry's msg_vs view id is %d and req id is %d, req_canbe_exed view id is %d and req id is %d\n", new_entry->msg_vs.view_id, new_entry->msg_vs.req_id, new_entry->req_canbe_exed.view_id, new_entry->req_canbe_exed.req_id);
     if(comp->group_size > 1){
         for (int i = 0; i < comp->group_size; i++) {
             //TODO RDMA write
@@ -126,6 +126,7 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
             if (i == comp->node_id)
                 continue;
             memcpy(shared_memory.shm[i], new_entry, log_entry_len(new_entry));
+
             shared_memory.shm[i] = (log_entry*)((char*)shared_memory.shm[i] + log_entry_len(new_entry));//TODO pointer move
         }
 
@@ -141,7 +142,6 @@ recheck:
         if (reached_quorum(record_data, comp->group_size))
         {
             goto handle_submit_req_exit;
-	    }
         }else{
             goto recheck;
         }
@@ -152,8 +152,8 @@ handle_submit_req_exit:
     if(record_data != NULL){
         free(record_data);
     }
-    //TODO: do we need the lock here?
-    view_stamp_inc(comp->committed);
+    //TODO: do we need the lock here?`
+    comp->committed.req_id = comp->committed.req_id + 1;
     return ret;
 }
 
@@ -166,18 +166,28 @@ static void* build_accept_ack(consensus_component* comp, view_stamp* vs){
     return msg;
 };
 
-void *handle_accept_req(void *arg)
+void *handle_accept_req(void* arg)
 {
+    printf("Now I am in handle accept req\n");
     consensus_component* comp = arg;
-    int my_socket = socket(AF_INET, SOCK_STREAM, 0);
-    connect(my_socket, (struct sockaddr*)&comp->my_address, comp->my_sock_len);
+
+    struct sockaddr_in ServAddr;
+    int sock;
+    /* Create a reliable, stream socket using TCP */
+    if ((sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0){printf("fail to create a socket\n");}
+    memset(&ServAddr, 0, sizeof(ServAddr));    
+    ServAddr.sin_family = AF_INET;             
+    ServAddr.sin_addr.s_addr = inet_addr(comp->my_ipaddr);  
+    ServAddr.sin_port = htons(comp->my_port); 
+    if (connect(sock, (struct sockaddr *) &ServAddr, sizeof(ServAddr)) < 0){printf("fail to connect\n");}
+    
     while (1)
     {
         log_entry* new_entry = shared_memory.shm[comp->node_id];
         
         if (new_entry->req_canbe_exed.view_id != 0)//TODO atmoic opeartion
         {
-            CON_LOG(comp, "Node %d Handle Accept Req.\n", comp->node_id);
+            CON_LOG(comp, "Replica handle new req. The new entry's msg_vs view id is %d and req id is %d, req_canbe_exed view id is %d and req id is %d\n", new_entry->msg_vs.view_id, new_entry->msg_vs.req_id, new_entry->req_canbe_exed.view_id, new_entry->req_canbe_exed.req_id)
             if(new_entry->msg_vs.view_id < comp->cur_view.view_id){
                 // TODO
                 //goto reloop;
@@ -218,6 +228,7 @@ void *handle_accept_req(void *arg)
 
             size_t data_size;
             record_data = NULL;
+            ssize_t ret;
             if(view_stamp_comp(new_entry->req_canbe_exed, comp->committed) > 0)
             {
                 db_key_type start = vstol(comp->committed)+1;
@@ -225,7 +236,11 @@ void *handle_accept_req(void *arg)
                 for(db_key_type index = start; index <= end; index++)
                 {
                     retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&record_data);
-                    send(my_socket, record_data->data, data_size, 0);
+                    CON_LOG(comp, "Now I can exed a request. view id is %d, req id is %d.\n", ltovs(index).view_id, ltovs(index).req_id);
+                    ret = send(sock, record_data->data, data_size, 0);
+                    if(ret == -1) {
+                        printf("send failed\n");
+                    }
                 }
                 comp->committed = new_entry->req_canbe_exed;
             }

@@ -17,16 +17,16 @@ struct consensus_component_t{
 
     uint32_t group_size;
 
-    FILE* con_log_file;
-
     view cur_view;
     view_stamp highest_seen_vs; 
     view_stamp committed;
 
+    int my_port;
+    char* my_ipaddr;
+
+    FILE* con_log_file;
     char* db_name;
     db* db_ptr;
-    struct sockaddr_in my_address;
-    size_t my_sock_len;
 
     /* lock */
     pthread_mutex_t mutex;

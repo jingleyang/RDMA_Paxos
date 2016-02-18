@@ -35,23 +35,15 @@ int consensus_read_config(struct consensus_component_t* comp, const char* config
         goto goto_config_error;
     }
 
-    const char* my_ipaddr=NULL;
-    int my_port=-1;
-
-    if(!config_setting_lookup_string(con_ele, "ip_address", &my_ipaddr)){
+    if(!config_setting_lookup_string(con_ele, "ip_address", &comp->my_ipaddr)){
         con_err_log("CONSENSUS : Cannot Find Current Node's IP Address.\n")
         goto goto_config_error;
     }
 
-    if(!config_setting_lookup_int(con_ele, "port", &my_port)){
+    if(!config_setting_lookup_int(con_ele, "port", &comp->my_port)){
         con_err_log("CONSENSUS : Cannot Find Current Node's Port.\n")
         goto goto_config_error;
     }
-
-    comp->my_address.sin_port = htons(my_port);
-    comp->my_address.sin_family = AF_INET;
-    inet_pton(AF_INET, my_ipaddr, &comp->my_address.sin_addr);
-    comp->my_sock_len = sizeof(comp->my_address);
 
     const char* db_name;
     if(!config_setting_lookup_string(con_ele, "db_name", &db_name)){
@@ -67,7 +59,6 @@ int consensus_read_config(struct consensus_component_t* comp, const char* config
         goto goto_config_error;
     }
     comp->db_name[db_name_len] = '\0';
-
     config_destroy(&config_file);
     return 0;
 
