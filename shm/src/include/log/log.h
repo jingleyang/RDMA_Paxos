@@ -14,16 +14,5 @@ typedef struct log_entry_t{
     char data[0];
 }log_entry;
 
-typedef struct log_t{
-    uint64_t read;
-    uint64_t write; 
-    uint64_t end;
-    uint64_t tail;
-    
-    uint64_t len;
-    
-    uint8_t entries[0];
-}log;
-
 log_entry* log_append_entry(struct consensus_component_t* comp, size_t data_size, void* data, view_stamp* vs, log_entry* entry);
 uint32_t log_entry_len(log_entry* entry);
