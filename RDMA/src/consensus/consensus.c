@@ -98,11 +98,6 @@ static view_stamp get_next_view_stamp(consensus_component* comp){
     return next_vs;
 };
 
-static void view_stamp_inc(view_stamp vs){
-    vs.req_id++;
-    return;
-};
-
 static void update_record(request_record* record, uint32_t node_id){
     record->bit_map = (record->bit_map | (1<<node_id));
     return;
@@ -134,7 +129,7 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
         goto handle_submit_req_exit;
     }
     ret = 0;
-    view_stamp_inc(comp->highest_seen_vs);
+    comp->highest_seen_vs.req_id = comp->highest_seen_vs.req_id + 1;
     log_entry* new_entry = log_append_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, shared_memory.shm_log, shared_memory.shm[comp->node_id]);
     shared_memory.shm[comp->node_id] = shared_memory.shm[comp->node_id] + 1;
     pthread_mutex_unlock(&comp->mutex);
@@ -171,7 +166,7 @@ handle_submit_req_exit:
         free(record_data);
     }
     //TODO: do we need the lock here?
-    view_stamp_inc(comp->committed);
+    comp->committed.req_id = comp->committed.req_id + 1;
     return ret;
 }
 
