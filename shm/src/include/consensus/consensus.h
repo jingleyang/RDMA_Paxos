@@ -11,6 +11,11 @@ typedef enum con_role_t{
     SECONDARY = 1,
 }con_role;
 
+typedef struct my_address_t{
+    struct sockaddr_in c_addr;
+    size_t c_sock_len;
+}my_address;
+
 struct consensus_component_t{
     con_role my_role;
     uint32_t node_id;
@@ -21,15 +26,14 @@ struct consensus_component_t{
     view_stamp highest_seen_vs; 
     view_stamp committed;
 
-    int my_port;
-    char* my_ipaddr;
+    my_address sys_addr;
+    
+    /* lock */
+    pthread_mutex_t mutex;
 
     FILE* con_log_file;
     char* db_name;
     db* db_ptr;
-
-    /* lock */
-    pthread_mutex_t mutex;
 };
 typedef struct consensus_component_t consensus_component;
 
