@@ -117,7 +117,7 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     ret = 0;
     view_stamp_inc(comp->highest_seen_vs);
     log_entry* new_entry = log_append_entry(comp, data_size, data, &next, shared_memory.shm[comp->node_id]);
-    shared_memory.shm[comp->node_id] = shared_memory.shm[comp->node_id] + log_entry_len(new_entry);//TODO pointer move
+    shared_memory.shm[comp->node_id] = (log_entry*)((char*)shared_memory.shm[comp->node_id] + log_entry_len(new_entry));//TODO pointer move
     pthread_mutex_unlock(&comp->mutex);
     if(comp->group_size > 1){
         for (int i = 0; i < comp->group_size; i++) {
@@ -126,6 +126,7 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
             if (i == comp->node_id)
                 continue;
             memcpy(shared_memory.shm[i], new_entry, log_entry_len(new_entry));
+            shared_memory.shm[i] = (log_entry*)((char*)shared_memory.shm[i] + log_entry_len(new_entry));//TODO pointer move
         }
 
 recheck:
@@ -201,7 +202,7 @@ void *handle_accept_req(void *arg)
 
             // record the data persistently 
             store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data);
-            shared_memory.shm[comp->node_id] = shared_memory.shm[comp->node_id] + log_entry_len(new_entry);//TODO pointer move
+            shared_memory.shm[comp->node_id] = (log_entry*)((char*)shared_memory.shm[comp->node_id] + log_entry_len(new_entry));//TODO pointer move
 
             accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
 
@@ -213,7 +214,7 @@ void *handle_accept_req(void *arg)
 
             memcpy(offset, reply, ACCEPT_ACK_SIZE);
 
-            shared_memory.shm[new_entry->node_id] = shared_memory.shm[new_entry->node_id] + log_entry_len(new_entry);//TODO pointer move
+            shared_memory.shm[new_entry->node_id] = (log_entry*)((char*)shared_memory.shm[new_entry->node_id] + log_entry_len(new_entry));//TODO pointer move
 
             size_t data_size;
             record_data = NULL;
