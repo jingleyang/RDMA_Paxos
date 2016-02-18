@@ -25,4 +25,5 @@ typedef struct log_t{
     uint8_t entries[0];
 }log;
 
-log_entry* log_append_entry(struct consensus_component_t* comp, size_t data_size, void* data, view_stamp* vs, log* log_buffer, log_entry* entry);
+log_entry* log_append_entry(struct consensus_component_t* comp, size_t data_size, void* data, view_stamp* vs, log_entry* entry);
+uint32_t log_entry_len(log_entry* entry);

@@ -11,24 +11,22 @@ void init_shm(node_id_t node_id, int size)
 	key[2] = 5679;
 	int shmid[size];
 	//create the segment
-	shmid[node_id] = shmget(key[node_id], sizeof(log) + LOG_SIZE, IPC_CREAT | 0666);
+	shmid[node_id] = shmget(key[node_id], LOG_SIZE, IPC_CREAT | 0666);
 	//now we attach the segment to our data space
-	shared_memory.shm_log = (log*)shmat(shmid[node_id], NULL, 0);
-	shared_memory.shm[node_id] = shared_memory.shm_log->entries;
-	shared_memory.shm_log->len  = LOG_SIZE;
-	shared_memory.shm_log->end  = 0;
-	shared_memory.shm_log->tail = 0;
+	shared_memory.shm[node_id] = (log_entry*)shmat(shmid[node_id], NULL, 0);
 
 loop:
 	for (int i = 0; i < size; ++i)
 	{
 		if (i == node_id)
 			continue;
-		if ((shmid[i] = shmget(key[i], sizeof(log) + LOG_SIZE, 0666)) < 0) {
+		int id = shmget(key[i], LOG_SIZE, 0666);
+		if (-1 == id) {
 			goto loop;
-    	}else{
-    		shared_memory.shm[i] = (log_entry*)shmat(shmid[i], NULL, 0);
-    	}
+		}else{
+			shmid[i]=id;
+			shared_memory.shm[i] = (log_entry*)shmat(shmid[i], NULL, 0);
+		}
 	}
 
 }

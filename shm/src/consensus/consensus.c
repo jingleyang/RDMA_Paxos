@@ -26,7 +26,11 @@ consensus_component* init_consensus_comp(const char* config_path, const char* lo
             comp->cur_view.view_id = 1;
             comp->cur_view.leader_id = comp->node_id;
             comp->cur_view.req_id = 0;
-        }
+        }else{
+            comp->cur_view.view_id = 1;
+            comp->cur_view.req_id = 0;
+            comp->cur_view.leader_id = 0; //TODO
+	}
 
         int build_log_ret = 0;
         if(log_path == NULL){
@@ -112,8 +116,8 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     }
     ret = 0;
     view_stamp_inc(comp->highest_seen_vs);
-    log_entry* new_entry = log_append_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, shared_memory.shm_log, shared_memory.shm[comp->node_id]);
-    shared_memory.shm[comp->node_id] = shared_memory.shm[comp->node_id] + 1;
+    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, shared_memory.shm[comp->node_id]);
+    shared_memory.shm[comp->node_id] = shared_memory.shm[comp->node_id] + log_entry_len(new_entry);//TODO pointer move
     pthread_mutex_unlock(&comp->mutex);
     if(comp->group_size > 1){
         for (int i = 0; i < comp->group_size; i++) {
@@ -121,8 +125,7 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
 
             if (i == comp->node_id)
                 continue;
-            memcpy(shared_memory.shm[i], new_entry, REQ_RECORD_SIZE(record_data));
-            shared_memory.shm[i] = shared_memory.shm[i] + 1;
+            memcpy(shared_memory.shm[i], new_entry, log_entry_len(new_entry));
         }
 
 recheck:
@@ -137,6 +140,7 @@ recheck:
         if (reached_quorum(record_data, comp->group_size))
         {
             goto handle_submit_req_exit;
+	    }
         }else{
             goto recheck;
         }
@@ -170,7 +174,7 @@ void *handle_accept_req(void *arg)
     {
         log_entry* new_entry = shared_memory.shm[comp->node_id];
         
-        if (new_entry->req_canbe_exed.view_id != 0)
+        if (new_entry->req_canbe_exed.view_id != 0)//TODO atmoic opeartion
         {
             CON_LOG(comp, "Node %d Handle Accept Req.\n", comp->node_id);
             if(new_entry->msg_vs.view_id < comp->cur_view.view_id){
@@ -189,16 +193,15 @@ void *handle_accept_req(void *arg)
             }
 
             db_key_type record_no = vstol(new_entry->msg_vs);
-            request_record* origin_data = (request_record*)new_entry->data;
-            request_record* record_data = (request_record*)malloc(REQ_RECORD_SIZE(origin_data));
+            request_record* record_data = (request_record*)malloc(new_entry->data_size + sizeof(request_record));
 
             gettimeofday(&record_data->created_time, NULL);
-            record_data->data_size = origin_data->data_size;
-            memcpy(record_data->data, origin_data->data, origin_data->data_size);
+            record_data->data_size = new_entry->data_size;
+            memcpy(record_data->data, new_entry->data, new_entry->data_size);
 
             // record the data persistently 
             store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data);
-            shared_memory.shm[comp->node_id] = shared_memory.shm[comp->node_id] + 1;
+            shared_memory.shm[comp->node_id] = shared_memory.shm[comp->node_id] + log_entry_len(new_entry);//TODO pointer move
 
             accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
 
@@ -210,7 +213,7 @@ void *handle_accept_req(void *arg)
 
             memcpy(offset, reply, ACCEPT_ACK_SIZE);
 
-            shared_memory.shm[new_entry->node_id] = shared_memory.shm[new_entry->node_id] + 1;
+            shared_memory.shm[new_entry->node_id] = shared_memory.shm[new_entry->node_id] + log_entry_len(new_entry);//TODO pointer move
 
             size_t data_size;
             record_data = NULL;
@@ -221,7 +224,7 @@ void *handle_accept_req(void *arg)
                 for(db_key_type index = start; index <= end; index++)
                 {
                     retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&record_data);
-                    send(my_socket, record_data, data_size, 0);
+                    send(my_socket, record_data->data, data_size, 0);
                 }
                 comp->committed = new_entry->req_canbe_exed;
             }

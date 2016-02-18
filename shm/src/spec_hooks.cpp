@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <dlfcn.h>
 #include <stdlib.h>
+#include <pthread.h>
 #include "include/consensus/consensus.h"
 #include "include/shm/shm.h"
 
@@ -22,8 +23,6 @@ void tern_init_func(int argc, char **argv, char **env){
   dprintf("%04d: __tern_init_func() called.\n", (int) pthread_self());
   if(saved_init_func)
     saved_init_func(argc, argv, env);
-
-  printf("%s\n", "initialization");
 
   char* config_path = "/home/wangcheng/Downloads/RDMA_Paxos-master/shm/target/nodes.local.cfg";
   char* log_path = NULL;
@@ -111,7 +110,6 @@ extern "C" int __libc_start_main(
 
 extern "C" ssize_t recv(int sockfd, void *buf, size_t len, int flags)
 {
-  printf("%s\n", "Recv");
   typedef ssize_t (*orig_recv_type)(int, void *, size_t, int);
   orig_recv_type orig_recv;
   orig_recv = (orig_recv_type) dlsym(RTLD_NEXT, "recv");
@@ -119,7 +117,7 @@ extern "C" ssize_t recv(int sockfd, void *buf, size_t len, int flags)
 
   if (consensus_comp->my_role == LEADER)
   {
-    rsm_op(consensus_comp, buf, len);
+    rsm_op(consensus_comp, buf, ret);
   }
 
   return ret;
