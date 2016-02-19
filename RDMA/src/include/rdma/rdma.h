@@ -1,3 +1,6 @@
+#ifndef RDMA_H
+#define RDMA_H 
+
 struct rdma_input_t {
     FILE* rdma_log;
     char* srv_type;
@@ -13,3 +16,15 @@ struct rdma_data_t {
 	log_t  *log;
 };
 typedef struct rdma_data_t rdma_data_t;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+	int rdma_init(node_id_t node_id, int size, const char* log_path, const char* start_mode);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

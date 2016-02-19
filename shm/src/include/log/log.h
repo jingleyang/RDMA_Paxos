@@ -2,7 +2,7 @@
 #include "../consensus/consensus.h"
 #include "../consensus/consensus-msg.h"
 
-#define LOG_SIZE  16384*1024
+#define LOG_SIZE  16384*1024*4
 
 typedef struct log_entry_t{
     accept_ack ack[MAX_SERVER_COUNT];

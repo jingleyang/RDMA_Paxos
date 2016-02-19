@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include "include/consensus/consensus.h"
-#include "include/shm/shm.h"
+#include "include/rdma/rdma.h"
 #include "include/util/debug.h"
 
 #define dprintf(fmt...)
@@ -32,7 +32,7 @@ void tern_init_func(int argc, char **argv, char **env){
   start_mode = (char*)malloc(sizeof(char));
   *start_mode = 'p';
   consensus_comp = init_consensus_comp(config_path, log_path, node_id, start_mode);
-  init_shm(consensus_comp->node_id, consensus_comp->group_size);
+  rdma_init(consensus_comp->node_id, log_path, consensus_comp->group_size);
 
   if (consensus_comp->my_role == SECONDARY)
   {  

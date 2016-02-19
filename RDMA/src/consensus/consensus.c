@@ -1,7 +1,6 @@
 #include "../include/consensus/consensus.h"
 #include "../include/consensus/consensus-msg.h"
 
-#include "../include/shm/shm.h"
 #include "../include/config-comp/config-comp.h"
 
 #include <sys/stat.h>

@@ -105,7 +105,6 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     }
     ret = 0;
     comp->highest_seen_vs.req_id = comp->highest_seen_vs.req_id + 1;
-    printf("highest seen vs req id is %d\n", comp->highest_seen_vs.req_id);
     log_entry* new_entry = log_append_entry(comp, data_size, data, &next, shared_memory.shm[comp->node_id]);
     shared_memory.shm[comp->node_id] = (log_entry*)((char*)shared_memory.shm[comp->node_id] + log_entry_len(new_entry));//TODO pointer move
     pthread_mutex_unlock(&comp->mutex);
