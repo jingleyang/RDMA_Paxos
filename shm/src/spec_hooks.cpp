@@ -121,8 +121,6 @@ extern "C" ssize_t recv(int sockfd, void *buf, size_t len, int flags)
     CON_LOG(consensus_comp, "Leader trying to reach a consensus.\n");
     rsm_op(consensus_comp, buf, ret);
     CON_LOG(consensus_comp, "Leader has reached reached a consensus.\n");
-  }else{
-    printf("Replica: I have received request sent from myself, ctx: %s.\n", (char*)buf);
   }
 
   return ret;

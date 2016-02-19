@@ -73,11 +73,6 @@ static view_stamp get_next_view_stamp(consensus_component* comp){
     return next_vs;
 };
 
-static void view_stamp_inc(view_stamp vs){
-    vs.req_id++;
-    return;
-};
-
 static void update_record(request_record* record, uint32_t node_id){
     record->bit_map = (record->bit_map | (1<<node_id));
     return;
