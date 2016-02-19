@@ -1,10 +1,8 @@
 #include "../include/consensus/consensus.h"
 #include "../include/consensus/consensus-msg.h"
 
-#include "../include/db/db-interface.h"
 #include "../include/shm/shm.h"
 #include "../include/config-comp/config-comp.h"
-#include "../include/rsm-interface.h"
 
 #include <sys/stat.h>
 
@@ -16,40 +14,30 @@ typedef struct request_record_t{
 }__attribute__((packed))request_record;
 #define REQ_RECORD_SIZE(M) (sizeof(request_record)+(M->data_size))
 
-typedef struct consensus_component_t{
-    con_role my_role;
-    uint32_t node_id;
-
-    uint32_t group_size;
-
-    FILE* con_log_file;
-
-    view cur_view;
-    view_stamp highest_seen_vs; 
-    view_stamp committed;
-
-    char* db_name;
-    db* db_ptr;
-    struct sockaddr_in my_address;
-    size_t my_sock_len;
-
-    /* lock */
-    pthread_mutex_t mutex;
-}consensus_component;
-
 consensus_component* init_consensus_comp(const char* config_path, const char* log_path, node_id_t node_id, const char* start_mode){
-    
     consensus_component* comp = (consensus_component*)malloc(sizeof(consensus_component));
     memset(comp, 0, sizeof(consensus_component));
-    consensus_read_config(comp, config_path);
 
     if(NULL != comp){
         comp->node_id = node_id;
+        comp->cur_view.view_id = 1;
+        comp->cur_view.req_id = 0;
         if(*start_mode == 's'){
-            comp->cur_view.view_id = 1;
             comp->cur_view.leader_id = comp->node_id;
-            comp->cur_view.req_id = 0;
+        }else{
+            comp->cur_view.leader_id = 0; //TODO
         }
+        if(comp->cur_view.leader_id == comp->node_id){
+            comp->my_role = LEADER;
+        }else{
+            comp->my_role = SECONDARY;
+        }
+        comp->highest_seen_vs.view_id = 1;
+        comp->highest_seen_vs.req_id = 0;
+        comp->committed.view_id = 1; 
+        comp->committed.req_id = 0;
+        consensus_read_config(comp, config_path);
+        pthread_mutex_init(&comp->mutex, NULL);
 
         int build_log_ret = 0;
         if(log_path == NULL){
@@ -73,20 +61,7 @@ consensus_component* init_consensus_comp(const char* config_path, const char* lo
                 free(con_log_path);
             }
         }
-
-        if(comp->cur_view.leader_id == comp->node_id){
-            comp->my_role = LEADER;
-        }else{
-            comp->my_role = SECONDARY;
-        }
-        comp->highest_seen_vs.view_id = 1;
-        comp->highest_seen_vs.req_id = 0;
-        comp->committed.view_id = 1; 
-        comp->committed.req_id = 0;
-
         comp->db_ptr = initialize_db(comp->db_name, 0);
-        
-        pthread_mutex_init(&comp->mutex, NULL);
     }
     return comp;
 }
@@ -130,17 +105,19 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     }
     ret = 0;
     comp->highest_seen_vs.req_id = comp->highest_seen_vs.req_id + 1;
-    log_entry* new_entry = log_append_entry(comp, REQ_RECORD_SIZE(record_data), record_data, &next, shared_memory.shm_log, shared_memory.shm[comp->node_id]);
-    shared_memory.shm[comp->node_id] = shared_memory.shm[comp->node_id] + 1;
+    printf("highest seen vs req id is %d\n", comp->highest_seen_vs.req_id);
+    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, shared_memory.shm[comp->node_id]);
+    shared_memory.shm[comp->node_id] = (log_entry*)((char*)shared_memory.shm[comp->node_id] + log_entry_len(new_entry));//TODO pointer move
     pthread_mutex_unlock(&comp->mutex);
+    CON_LOG(comp, "the new entry's msg_vs view id is %d and req id is %d, req_canbe_exed view id is %d and req id is %d\n", new_entry->msg_vs.view_id, new_entry->msg_vs.req_id, new_entry->req_canbe_exed.view_id, new_entry->req_canbe_exed.req_id);
     if(comp->group_size > 1){
         for (int i = 0; i < comp->group_size; i++) {
             //TODO RDMA write
 
             if (i == comp->node_id)
                 continue;
-            memcpy(shared_memory.shm[i], new_entry, REQ_RECORD_SIZE(record_data));
-            shared_memory.shm[i] = shared_memory.shm[i] + 1;
+            memcpy(shared_memory.shm[i], new_entry, log_entry_len(new_entry));
+            shared_memory.shm[i] = (log_entry*)((char*)shared_memory.shm[i] + log_entry_len(new_entry));//TODO pointer move
         }
 
 recheck:
@@ -165,7 +142,7 @@ handle_submit_req_exit:
     if(record_data != NULL){
         free(record_data);
     }
-    //TODO: do we need the lock here?
+    //TODO: do we need the lock here?`
     comp->committed.req_id = comp->committed.req_id + 1;
     return ret;
 }
@@ -179,17 +156,24 @@ static void* build_accept_ack(consensus_component* comp, view_stamp* vs){
     return msg;
 };
 
-void handle_accept_req(consensus_component* comp)
+void *handle_accept_req(void* arg)
 {
-    int my_socket = socket(AF_INET, SOCK_STREAM, 0);
-    connect(my_socket, (struct sockaddr*)&comp->my_address, comp->my_sock_len);
+    consensus_component* comp = arg;
+  
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    int connected = 0;
+    
     while (1)
     {
         log_entry* new_entry = shared_memory.shm[comp->node_id];
         
-        if (new_entry->req_canbe_exed.view_id != 0)
+        if (new_entry->req_canbe_exed.view_id != 0)//TODO atmoic opeartion
         {
-            CON_LOG(comp, "Node %d Handle Accept Req.\n", comp->node_id);
+            if(connected == 0){
+                connect(sock, (struct sockaddr*)&comp->sys_addr.c_addr, comp->sys_addr.c_sock_len);
+                connected = 1;
+            }
+            CON_LOG(comp, "Replica handle new req. The new entry's msg_vs view id is %d and req id is %d, req_canbe_exed view id is %d and req id is %d\n", new_entry->msg_vs.view_id, new_entry->msg_vs.req_id, new_entry->req_canbe_exed.view_id, new_entry->req_canbe_exed.req_id)
             if(new_entry->msg_vs.view_id < comp->cur_view.view_id){
                 // TODO
                 //goto reloop;
@@ -206,16 +190,15 @@ void handle_accept_req(consensus_component* comp)
             }
 
             db_key_type record_no = vstol(new_entry->msg_vs);
-            request_record* origin_data = (request_record*)new_entry->data;
-            request_record* record_data = (request_record*)malloc(REQ_RECORD_SIZE(origin_data));
+            request_record* record_data = (request_record*)malloc(new_entry->data_size + sizeof(request_record));
 
             gettimeofday(&record_data->created_time, NULL);
-            record_data->data_size = origin_data->data_size;
-            memcpy(record_data->data, origin_data->data, origin_data->data_size);
+            record_data->data_size = new_entry->data_size;
+            memcpy(record_data->data, new_entry->data, new_entry->data_size);
 
             // record the data persistently 
             store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data);
-            shared_memory.shm[comp->node_id] = shared_memory.shm[comp->node_id] + 1;
+            shared_memory.shm[comp->node_id] = (log_entry*)((char*)shared_memory.shm[comp->node_id] + log_entry_len(new_entry));//TODO pointer move
 
             accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
 
@@ -227,7 +210,7 @@ void handle_accept_req(consensus_component* comp)
 
             memcpy(offset, reply, ACCEPT_ACK_SIZE);
 
-            shared_memory.shm[new_entry->node_id] = shared_memory.shm[new_entry->node_id] + 1;
+            shared_memory.shm[new_entry->node_id] = (log_entry*)((char*)shared_memory.shm[new_entry->node_id] + log_entry_len(new_entry));//TODO pointer move
 
             size_t data_size;
             record_data = NULL;
@@ -238,7 +221,8 @@ void handle_accept_req(consensus_component* comp)
                 for(db_key_type index = start; index <= end; index++)
                 {
                     retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&record_data);
-                    send(my_socket, record_data, data_size, 0);
+                    CON_LOG(comp, "Now I can exed a request. view id is %d, req id is %d.\n", ltovs(index).view_id, ltovs(index).req_id);
+                    send(sock, record_data->data, record_data->data_size, 0);
                 }
                 comp->committed = new_entry->req_canbe_exed;
             }

@@ -2,11 +2,14 @@
 #include <stdio.h>
 #include <dlfcn.h>
 #include <stdlib.h>
-#include "include/rsm-interface.h"
+#include <pthread.h>
+#include "include/consensus/consensus.h"
+#include "include/shm/shm.h"
+#include "include/util/debug.h"
 
 #define dprintf(fmt...)
 
-struct consensus_component_t* consensus_comp;
+consensus_component* consensus_comp;
 
 typedef int (*main_type)(int, char**, char**);
 
@@ -22,16 +25,19 @@ void tern_init_func(int argc, char **argv, char **env){
   if(saved_init_func)
     saved_init_func(argc, argv, env);
 
-  char* config_path = "../target/nodes.local.cfg";
+  char* config_path = "/home/wangcheng/Downloads/RDMA_Paxos-master/shm/target/nodes.local.cfg";
   char* log_path = NULL;
-  uint32_t node_id = 0;
-  char* start_mode = 's';
+  int64_t node_id = 2;
+  char* start_mode;
+  start_mode = (char*)malloc(sizeof(char));
+  *start_mode = 'p';
   consensus_comp = init_consensus_comp(config_path, log_path, node_id, start_mode);
-  shm_init(consensus_comp->node_id, consensus_comp->group_size);
+  init_shm(consensus_comp->node_id, consensus_comp->group_size);
 
   if (consensus_comp->my_role == SECONDARY)
-  {
-    handle_accept_req(consensus_comp);
+  {  
+    pthread_t rep_th;
+    pthread_create(&rep_th, NULL, &handle_accept_req, (void*)consensus_comp);
   }
 }
 
@@ -107,12 +113,14 @@ extern "C" ssize_t recv(int sockfd, void *buf, size_t len, int flags)
 {
   typedef ssize_t (*orig_recv_type)(int, void *, size_t, int);
   orig_recv_type orig_recv;
-  orig_recv = (orig_recv_type) dlsym(handle, "recv");
+  orig_recv = (orig_recv_type) dlsym(RTLD_NEXT, "recv");
   ssize_t ret = orig_recv(sockfd, buf, len, flags);
 
   if (consensus_comp->my_role == LEADER)
   {
-    rsm_op(consensus_comp, buf, len);
+    CON_LOG(consensus_comp, "Leader trying to reach a consensus.\n");
+    rsm_op(consensus_comp, buf, ret);
+    CON_LOG(consensus_comp, "Leader has reached reached a consensus.\n");
   }
 
   return ret;

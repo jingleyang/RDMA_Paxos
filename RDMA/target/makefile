@@ -35,13 +35,13 @@ all: interpose.so
 interpose.so: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: GCC C Linker'
-	gcc-4.8  -shared -Wl,-soname,interpose.so $(OBJS) $(USER_OBJS) -Wall -pg -o  interpose.so -ldl  -L"$(ROOT_DIR)/../.local/lib" -pthread $(LIBS)
+	gcc-4.8  -shared -Wl,-soname,interpose.so $(OBJS) $(USER_OBJS) -Wall -pg -o interpose.so -ldl  -L"$(ROOT_DIR)/../.local/lib" $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) server.out
+	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) interpose.so
 	-@echo ' '
 
 .PHONY: all clean dependents

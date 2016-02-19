@@ -2,7 +2,7 @@
 #include "../consensus/consensus.h"
 #include "../consensus/consensus-msg.h"
 
-#define LOG_SIZE  16384*PAGE_SIZE
+#define LOG_SIZE  16384*1024
 
 typedef struct log_entry_t{
     accept_ack ack[MAX_SERVER_COUNT];
@@ -14,15 +14,5 @@ typedef struct log_entry_t{
     char data[0];
 }log_entry;
 
-typedef struct log_t{
-    uint64_t read;
-    uint64_t write; 
-    uint64_t end;
-    uint64_t tail;
-    
-    uint64_t len;
-    
-    uint8_t entries[0];
-}log;
-
-log_entry* log_append_entry(struct consensus_component_t* comp, size_t data_size, void* data, view_stamp* vs, log* log_buffer, log_entry* entry);
+log_entry* log_append_entry(struct consensus_component_t* comp, size_t data_size, void* data, view_stamp* vs, log_entry* entry);
+uint32_t log_entry_len(log_entry* entry);

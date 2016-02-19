@@ -4,5 +4,5 @@
 
 USER_OBJS :=
 
-LIBS := -levent -ldb -lconfig
+LIBS := -levent -ldb -lconfig -lsupc++ -lpthread -lstdc++ -lrt
 
