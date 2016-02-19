@@ -25,6 +25,7 @@ void tern_init_func(int argc, char **argv, char **env){
   if(saved_init_func)
     saved_init_func(argc, argv, env);
 
+  printf("tern_init_func is called\n");
   char* config_path = "/home/wangcheng/Downloads/RDMA_Paxos-master/shm/target/nodes.local.cfg";
   char* log_path = NULL;
   const char* start_mode = getenv("start_mode");
@@ -125,6 +126,8 @@ extern "C" ssize_t recv(int sockfd, void *buf, size_t len, int flags)
     CON_LOG(consensus_comp, "Leader trying to reach a consensus.\n");
     rsm_op(consensus_comp, buf, ret);
     CON_LOG(consensus_comp, "Leader has reached reached a consensus.\n");
+  }else{
+    CON_LOG(consensus_comp, "Replica %d has received a request sent from myself.\n", consensus_comp->node_id);
   }
 
   return ret;

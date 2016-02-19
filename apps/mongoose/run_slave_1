@@ -1,0 +1,4 @@
+#!/bin/bash
+
+env LD_PRELOAD=/home/wangcheng/Documents/RDMA_Paxos/shm/target/interpose.so node_id=1 start_mode=p ./mongoose -I /usr/bin/php-cgi -p 7001
+
