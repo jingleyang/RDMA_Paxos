@@ -28,12 +28,13 @@ struct consensus_component_t{
 
     my_address sys_addr;
     
+    FILE* con_log_file;
+
+    char* db_name;
+    db* db_ptr;
+    
     /* lock */
     pthread_mutex_t mutex;
-
-    FILE* con_log_file;
-    db* db_ptr;
-    char* db_name;
 };
 typedef struct consensus_component_t consensus_component;
 

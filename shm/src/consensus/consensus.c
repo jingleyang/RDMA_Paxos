@@ -20,16 +20,24 @@ consensus_component* init_consensus_comp(const char* config_path, const char* lo
 
     if(NULL != comp){
         comp->node_id = node_id;
-        consensus_read_config(comp, config_path);
+        comp->cur_view.view_id = 1;
+        comp->cur_view.req_id = 0;
         if(*start_mode == 's'){
-            comp->cur_view.view_id = 1;
             comp->cur_view.leader_id = comp->node_id;
-            comp->cur_view.req_id = 0;
         }else{
-            comp->cur_view.view_id = 1;
-            comp->cur_view.req_id = 0;
             comp->cur_view.leader_id = 0; //TODO
         }
+        if(comp->cur_view.leader_id == comp->node_id){
+            comp->my_role = LEADER;
+        }else{
+            comp->my_role = SECONDARY;
+        }
+        comp->highest_seen_vs.view_id = 1;
+        comp->highest_seen_vs.req_id = 0;
+        comp->committed.view_id = 1; 
+        comp->committed.req_id = 0;
+        consensus_read_config(comp, config_path);
+        pthread_mutex_init(&comp->mutex, NULL);
 
         int build_log_ret = 0;
         if(log_path == NULL){
@@ -53,20 +61,7 @@ consensus_component* init_consensus_comp(const char* config_path, const char* lo
                 free(con_log_path);
             }
         }
-
-        if(comp->cur_view.leader_id == comp->node_id){
-            comp->my_role = LEADER;
-        }else{
-            comp->my_role = SECONDARY;
-        }
-        comp->highest_seen_vs.view_id = 1;
-        comp->highest_seen_vs.req_id = 0;
-        comp->committed.view_id = 1; 
-        comp->committed.req_id = 0;
         comp->db_ptr = initialize_db(comp->db_name, 0);
-        
-        pthread_mutex_init(&comp->mutex, NULL);
-        printf("my db name is %s\n",comp->db_name);
     }
     return comp;
 }
