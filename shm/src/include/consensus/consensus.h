@@ -32,8 +32,8 @@ struct consensus_component_t{
     pthread_mutex_t mutex;
 
     FILE* con_log_file;
-    char* db_name;
     db* db_ptr;
+    char* db_name;
 };
 typedef struct consensus_component_t consensus_component;
 
