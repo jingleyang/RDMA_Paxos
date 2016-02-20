@@ -142,10 +142,7 @@ handle_submit_req_exit:
         free(record_data);
     }
     //TODO: do we need the lock here?
-    if (new_entry->msg_vs.req_id > comp->committed.req_id + 1)
-    {
-        CON_LOG(comp, "new_entry->msg_vs.req_id > comp->committed.req_id + 1");
-    }
+    while (new_entry->msg_vs.req_id > comp->committed.req_id + 1);
     comp->committed.req_id = comp->committed.req_id + 1;
     return ret;
 }
