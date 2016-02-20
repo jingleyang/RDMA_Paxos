@@ -105,18 +105,19 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     }
     ret = 0;
     comp->highest_seen_vs.req_id = comp->highest_seen_vs.req_id + 1;
-    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, shared_memory.shm[comp->node_id]);
-    shared_memory.shm[comp->node_id] = (log_entry*)((char*)shared_memory.shm[comp->node_id] + log_entry_len(new_entry));//TODO pointer move
-    pthread_mutex_unlock(&comp->mutex);
+    uint64_t offset = shared_memory.log->tail;
+    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, shared_memory.log, shared_memory.shm[comp->node_id]);
+    //shared_memory.shm[comp->node_id] = (void*)((char*)shared_memory.shm[comp->node_id] + log_entry_len(new_entry));
     CON_LOG(comp, "the new entry's msg_vs view id is %d and req id is %d, req_canbe_exed view id is %d and req id is %d\n", new_entry->msg_vs.view_id, new_entry->msg_vs.req_id, new_entry->req_canbe_exed.view_id, new_entry->req_canbe_exed.req_id);
+    pthread_mutex_unlock(&comp->mutex);
+
     if(comp->group_size > 1){
         for (int i = 0; i < comp->group_size; i++) {
             //TODO RDMA write
 
             if (i == comp->node_id)
                 continue;
-            memcpy(shared_memory.shm[i], new_entry, log_entry_len(new_entry));
-            shared_memory.shm[i] = (log_entry*)((char*)shared_memory.shm[i] + log_entry_len(new_entry));//TODO pointer move
+            memcpy((void*)((char*)shared_memory.shm[i] + offset), new_entry, log_entry_len(new_entry));
         }
 
 recheck:
@@ -141,7 +142,7 @@ handle_submit_req_exit:
     if(record_data != NULL){
         free(record_data);
     }
-    //TODO: do we need the lock here?`
+    //TODO: do we need the lock here?
     comp->committed.req_id = comp->committed.req_id + 1;
     return ret;
 }
@@ -164,7 +165,7 @@ void *handle_accept_req(void* arg)
     
     while (1)
     {
-        log_entry* new_entry = shared_memory.shm[comp->node_id];
+        log_entry* new_entry = (log_entry*)((char*)shared_memory.shm[comp->node_id] + shared_memory.log->tail);
         
         if (new_entry->req_canbe_exed.view_id != 0)//TODO atmoic opeartion
         {
@@ -197,19 +198,12 @@ void *handle_accept_req(void* arg)
 
             // record the data persistently 
             store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data);
-            shared_memory.shm[comp->node_id] = (log_entry*)((char*)shared_memory.shm[comp->node_id] + log_entry_len(new_entry));//TODO pointer move
+            uint64_t offset = shared_memory.log->tail + sizeof(accept_ack) * comp->node_id;
+            shared_memory.log->tail = shared_memory.log->tail + log_entry_len(new_entry);
 
             accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
 
-            accept_ack* offset = (accept_ack*)(shared_memory.shm[new_entry->node_id]);
-            for (int i = 0; i < comp->node_id; ++i)
-            {
-                offset++;
-            }
-
-            memcpy(offset, reply, ACCEPT_ACK_SIZE);
-
-            shared_memory.shm[new_entry->node_id] = (log_entry*)((char*)shared_memory.shm[new_entry->node_id] + log_entry_len(new_entry));//TODO pointer move
+            memcpy((void*)((char*)shared_memory.shm[new_entry->node_id] + offset), reply, ACCEPT_ACK_SIZE);
 
             size_t data_size;
             record_data = NULL;

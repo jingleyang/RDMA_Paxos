@@ -1,10 +1,10 @@
 #ifndef SHM_H
 #define SHM_H
 #include "../util/common-structure.h"
-#include "../log/log.h"
 
 struct shm_data_t {
-	log_entry* shm[MAX_SERVER_COUNT];
+	void* shm[MAX_SERVER_COUNT];
+	log_t* log;
 };
 
 typedef struct shm_data_t shm_data;

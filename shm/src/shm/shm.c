@@ -13,7 +13,9 @@ void init_shm(node_id_t node_id, int size)
 	//create the segment
 	shmid[node_id] = shmget(key[node_id], LOG_SIZE, IPC_CREAT | 0666);
 	//now we attach the segment to our data space
-	shared_memory.shm[node_id] = (log_entry*)shmat(shmid[node_id], NULL, 0);
+	shared_memory.shm[node_id] = shmat(shmid[node_id], NULL, 0);
+	shared_memory.log->end = malloc(sizeof(shared_memory.log->end));
+	shared_memory.log->end = 0;
 
 loop:
 	for (int i = 0; i < size; ++i)
@@ -25,7 +27,7 @@ loop:
 			goto loop;
 		}else{
 			shmid[i]=id;
-			shared_memory.shm[i] = (log_entry*)shmat(shmid[i], NULL, 0);
+			shared_memory.shm[i] = shmat(shmid[i], NULL, 0);
 		}
 	}
 
