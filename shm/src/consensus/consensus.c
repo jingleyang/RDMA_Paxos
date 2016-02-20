@@ -37,8 +37,7 @@ consensus_component* init_consensus_comp(const char* config_path, const char* lo
         comp->committed.view_id = 1; 
         comp->committed.req_id = 0;
         consensus_read_config(comp, config_path);
-        //pthread_mutex_init(&comp->mutex, NULL);
-        pthread_spin_init(&comp->lock, PTHREAD_PROCESS_SHARED);
+        pthread_mutex_init(&comp->mutex, NULL);
 
         int build_log_ret = 0;
         if(log_path == NULL){
