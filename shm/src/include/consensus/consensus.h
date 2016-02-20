@@ -34,8 +34,8 @@ struct consensus_component_t{
     db* db_ptr;
     
     /* lock */
-    pthread_mutex_t mutex;
-    //pthread_spinlock_t lock;
+    //pthread_mutex_t mutex;
+    pthread_spinlock_t lock;
 };
 typedef struct consensus_component_t consensus_component;
 

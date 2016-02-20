@@ -37,9 +37,8 @@ consensus_component* init_consensus_comp(const char* config_path, const char* lo
         comp->committed.view_id = 1; 
         comp->committed.req_id = 0;
         consensus_read_config(comp, config_path);
-        pthread_mutex_init(&comp->mutex, NULL);
-        //int pshared;
-        //pthread_spin_init(&comp->lock, pshared);
+        //pthread_mutex_init(&comp->mutex, NULL);
+        pthread_spin_init(&comp->lock, PTHREAD_PROCESS_SHARED);
 
         int build_log_ret = 0;
         if(log_path == NULL){
@@ -91,9 +90,16 @@ static int reached_quorum(request_record* record, int group_size){
 
 int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     int ret = 1;
-    pthread_mutex_lock(&comp->mutex);
-    //pthread_spin_lock(&comp->lock);
+    //pthread_mutex_lock(&comp->mutex);
+    pthread_spin_lock(&comp->lock);
     view_stamp next = get_next_view_stamp(comp);
+
+    comp->highest_seen_vs.req_id = comp->highest_seen_vs.req_id + 1;
+    uint64_t offset = shared_memory.log->tail;
+    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, shared_memory.log, shared_memory.shm[comp->node_id]);
+    CON_LOG(comp, "New entry's msg_vs view id is %d and req id is %d, req_canbe_exed view id is %d and req id is %d\n", new_entry->msg_vs.view_id, new_entry->msg_vs.req_id, new_entry->req_canbe_exed.view_id, new_entry->req_canbe_exed.req_id);
+    //pthread_mutex_unlock(&comp->mutex);
+    pthread_spin_unlock(&comp->lock);
 
     /* record the data persistently */
     db_key_type record_no = vstol(next);
@@ -107,13 +113,6 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
         goto handle_submit_req_exit;
     }
     ret = 0;
-    comp->highest_seen_vs.req_id = comp->highest_seen_vs.req_id + 1;
-    uint64_t offset = shared_memory.log->tail;
-    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, shared_memory.log, shared_memory.shm[comp->node_id]);
-    //shared_memory.shm[comp->node_id] = (void*)((char*)shared_memory.shm[comp->node_id] + log_entry_len(new_entry));
-    CON_LOG(comp, "New entry's msg_vs view id is %d and req id is %d, req_canbe_exed view id is %d and req id is %d\n", new_entry->msg_vs.view_id, new_entry->msg_vs.req_id, new_entry->req_canbe_exed.view_id, new_entry->req_canbe_exed.req_id);
-    pthread_mutex_unlock(&comp->mutex);
-    //pthread_spin_unlock(&comp->lock);
 
     if(comp->group_size > 1){
         for (int i = 0; i < comp->group_size; i++) {
@@ -170,6 +169,13 @@ void *handle_accept_req(void* arg)
   
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     int connected = 0;
+
+    db_key_type start;
+    db_key_type end;
+    db_key_type index;
+
+    size_t data_size;
+    request_record* retrieve_data= NULL;
     
     while (1)
     {
@@ -215,13 +221,11 @@ void *handle_accept_req(void* arg)
 
             free(record_data);
             free(reply);
-            size_t data_size;
-            request_record* retrieve_data= NULL;
             if(view_stamp_comp(new_entry->req_canbe_exed, comp->committed) > 0)
             {
-                db_key_type start = vstol(comp->committed)+1;
-                db_key_type end = vstol(new_entry->req_canbe_exed);
-                for(db_key_type index = start; index <= end; index++)
+                start = vstol(comp->committed)+1;
+                end = vstol(new_entry->req_canbe_exed);
+                for(index = start; index <= end; index++)
                 {
                     retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&retrieve_data);
                     CON_LOG(comp, "Now I can exed a request. view id is %d, req id is %d.\n", ltovs(index).view_id, ltovs(index).req_id);
