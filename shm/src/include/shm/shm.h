@@ -1,6 +1,7 @@
 #ifndef SHM_H
 #define SHM_H
 #include "../util/common-structure.h"
+#include "../log/log.h"
 
 struct shm_data_t {
 	void* shm[MAX_SERVER_COUNT];
