@@ -177,7 +177,7 @@ void *handle_accept_req(void* arg)
         if (new_entry->req_canbe_exed.view_id != 0)//TODO atmoic opeartion
         {
             int sock = socket(AF_INET, SOCK_STREAM, 0);
-            connect(sock, (struct sockaddr*)&comp->sys_addr.c_addr, comp->sys_addr.c_sock_len); //TODO: why? Broken pipe
+            connect(sock, (struct sockaddr*)&comp->sys_addr.c_addr, comp->sys_addr.c_sock_len); //TODO: why? Broken pipe. Maybe the server closes the socket
 
             if(new_entry->msg_vs.view_id < comp->cur_view.view_id){
                 // TODO
