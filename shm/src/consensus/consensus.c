@@ -38,6 +38,8 @@ consensus_component* init_consensus_comp(const char* config_path, const char* lo
         comp->committed.req_id = 0;
         consensus_read_config(comp, config_path);
         pthread_mutex_init(&comp->mutex, NULL);
+        //int pshared;
+        //pthread_spin_init(&comp->lock, pshared);
 
         int build_log_ret = 0;
         if(log_path == NULL){
@@ -90,6 +92,7 @@ static int reached_quorum(request_record* record, int group_size){
 int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     int ret = 1;
     pthread_mutex_lock(&comp->mutex);
+    //pthread_spin_lock(&comp->lock);
     view_stamp next = get_next_view_stamp(comp);
 
     /* record the data persistently */
@@ -110,6 +113,7 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     //shared_memory.shm[comp->node_id] = (void*)((char*)shared_memory.shm[comp->node_id] + log_entry_len(new_entry));
     CON_LOG(comp, "New entry's msg_vs view id is %d and req id is %d, req_canbe_exed view id is %d and req id is %d\n", new_entry->msg_vs.view_id, new_entry->msg_vs.req_id, new_entry->req_canbe_exed.view_id, new_entry->req_canbe_exed.req_id);
     pthread_mutex_unlock(&comp->mutex);
+    //pthread_spin_unlock(&comp->lock);
 
     if(comp->group_size > 1){
         for (int i = 0; i < comp->group_size; i++) {
@@ -143,6 +147,10 @@ handle_submit_req_exit:
         free(record_data);
     }
     //TODO: do we need the lock here?
+    if (new_entry->msg_vs.req_id > comp->committed.req_id + 1)
+    {
+        CON_LOG(comp, "new_entry->msg_vs.req_id > comp->committed.req_id + 1");
+    }
     comp->committed.req_id = comp->committed.req_id + 1;
     return ret;
 }
@@ -205,17 +213,19 @@ void *handle_accept_req(void* arg)
 
             memcpy((void*)((char*)shared_memory.shm[new_entry->node_id] + offset), reply, ACCEPT_ACK_SIZE);
 
+            free(record_data);
+            free(reply);
             size_t data_size;
-            record_data = NULL;
+            request_record* retrieve_data= NULL;
             if(view_stamp_comp(new_entry->req_canbe_exed, comp->committed) > 0)
             {
                 db_key_type start = vstol(comp->committed)+1;
                 db_key_type end = vstol(new_entry->req_canbe_exed);
                 for(db_key_type index = start; index <= end; index++)
                 {
-                    retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&record_data);
+                    retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&retrieve_data);
                     CON_LOG(comp, "Now I can exed a request. view id is %d, req id is %d.\n", ltovs(index).view_id, ltovs(index).req_id);
-                    send(sock, record_data->data, record_data->data_size, 0);
+                    //send(sock, retrieve_data->data, retrieve_data->data_size, 0);
                 }
                 comp->committed = new_entry->req_canbe_exed;
             }
