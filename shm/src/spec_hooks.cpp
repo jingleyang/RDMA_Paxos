@@ -123,11 +123,7 @@ extern "C" ssize_t recv(int sockfd, void *buf, size_t len, int flags)
 
   if (consensus_comp->my_role == LEADER)
   {
-    CON_LOG(consensus_comp, "Leader trying to reach a consensus.\n");
     rsm_op(consensus_comp, buf, ret);
-    CON_LOG(consensus_comp, "Leader has reached a consensus.\n");
-  }else{
-    CON_LOG(consensus_comp, "Replica %d has received a request sent from myself.\n", consensus_comp->node_id);
   }
 
   return ret;

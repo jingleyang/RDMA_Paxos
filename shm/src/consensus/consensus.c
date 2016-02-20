@@ -91,6 +91,7 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     int ret = 1;
     pthread_mutex_lock(&comp->mutex);
     view_stamp next = get_next_view_stamp(comp);
+    CON_LOG(consensus_comp, "Leader trying to reach a consensus on view id %d, req id %d\n", next.view_id, next.req_id);
 
     /* record the data persistently */
     db_key_type record_no = vstol(next);
@@ -144,6 +145,7 @@ handle_submit_req_exit:
     //TODO: do we need the lock here?
     while (new_entry->msg_vs.req_id > comp->committed.req_id + 1);
     comp->committed.req_id = comp->committed.req_id + 1;
+    CON_LOG(consensus_comp, "Leader finished the consensus on view id %d, req id %d\n", next.view_id, next.req_id);
     return ret;
 }
 
@@ -175,7 +177,7 @@ void *handle_accept_req(void* arg)
         {
             int sock = socket(AF_INET, SOCK_STREAM, 0);
             connect(sock, (struct sockaddr*)&comp->sys_addr.c_addr, comp->sys_addr.c_sock_len); //TODO: why? Broken pipe. Maybe the server closes the socket
-
+            CON_LOG(comp, "Repplica %d handling view id %d req id %d\n", comp->node_id, new_entry->msg_vs.view_id, new_entry->msg_vs.req_id);
             if(new_entry->msg_vs.view_id < comp->cur_view.view_id){
                 // TODO
                 //goto reloop;
@@ -217,6 +219,7 @@ void *handle_accept_req(void* arg)
                 {
                     retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&retrieve_data);
                     send(sock, retrieve_data->data, retrieve_data->data_size, 0);
+                    CON_LOG(comp, "Repplica %d try to exed view id %d req id %d\n", comp->node_id, ltovs(index).view_id, ltovs(index).req_id);
                 }
                 comp->committed = new_entry->req_canbe_exed;
             }
