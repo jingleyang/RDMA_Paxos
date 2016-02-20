@@ -90,16 +90,8 @@ static int reached_quorum(request_record* record, int group_size){
 
 int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     int ret = 1;
-    //pthread_mutex_lock(&comp->mutex);
-    pthread_spin_lock(&comp->lock);
+    pthread_mutex_lock(&comp->mutex);
     view_stamp next = get_next_view_stamp(comp);
-
-    comp->highest_seen_vs.req_id = comp->highest_seen_vs.req_id + 1;
-    uint64_t offset = shared_memory.log->tail;
-    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, shared_memory.log, shared_memory.shm[comp->node_id]);
-    CON_LOG(comp, "New entry's msg_vs view id is %d and req id is %d, req_canbe_exed view id is %d and req id is %d\n", new_entry->msg_vs.view_id, new_entry->msg_vs.req_id, new_entry->req_canbe_exed.view_id, new_entry->req_canbe_exed.req_id);
-    //pthread_mutex_unlock(&comp->mutex);
-    pthread_spin_unlock(&comp->lock);
 
     /* record the data persistently */
     db_key_type record_no = vstol(next);
@@ -113,6 +105,11 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
         goto handle_submit_req_exit;
     }
     ret = 0;
+
+    comp->highest_seen_vs.req_id = comp->highest_seen_vs.req_id + 1;
+    uint64_t offset = shared_memory.log->tail;
+    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, shared_memory.log, shared_memory.shm[comp->node_id]);
+    pthread_mutex_unlock(&comp->mutex);
 
     if(comp->group_size > 1){
         for (int i = 0; i < comp->group_size; i++) {
@@ -166,9 +163,6 @@ static void* build_accept_ack(consensus_component* comp, view_stamp* vs){
 void *handle_accept_req(void* arg)
 {
     consensus_component* comp = arg;
-  
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    int connected = 0;
 
     db_key_type start;
     db_key_type end;
@@ -183,11 +177,9 @@ void *handle_accept_req(void* arg)
         
         if (new_entry->req_canbe_exed.view_id != 0)//TODO atmoic opeartion
         {
-            if(connected == 0){
-                connect(sock, (struct sockaddr*)&comp->sys_addr.c_addr, comp->sys_addr.c_sock_len);
-                connected = 1;
-            }
-            CON_LOG(comp, "Replica handle new req. The new entry's msg_vs view id is %d and req id is %d, req_canbe_exed view id is %d and req id is %d\n", new_entry->msg_vs.view_id, new_entry->msg_vs.req_id, new_entry->req_canbe_exed.view_id, new_entry->req_canbe_exed.req_id)
+            int sock = socket(AF_INET, SOCK_STREAM, 0);
+            connect(sock, (struct sockaddr*)&comp->sys_addr.c_addr, comp->sys_addr.c_sock_len); //TODO: why? Broken pipe
+
             if(new_entry->msg_vs.view_id < comp->cur_view.view_id){
                 // TODO
                 //goto reloop;
@@ -228,8 +220,7 @@ void *handle_accept_req(void* arg)
                 for(index = start; index <= end; index++)
                 {
                     retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&retrieve_data);
-                    CON_LOG(comp, "Now I can exed a request. view id is %d, req id is %d.\n", ltovs(index).view_id, ltovs(index).req_id);
-                    //send(sock, retrieve_data->data, retrieve_data->data_size, 0);
+                    send(sock, retrieve_data->data, retrieve_data->data_size, 0);
                 }
                 comp->committed = new_entry->req_canbe_exed;
             }
