@@ -177,7 +177,7 @@ void *handle_accept_req(void* arg)
         {
             int sock = socket(AF_INET, SOCK_STREAM, 0);
             connect(sock, (struct sockaddr*)&comp->sys_addr.c_addr, comp->sys_addr.c_sock_len); //TODO: why? Broken pipe. Maybe the server closes the socket
-            CON_LOG(comp, "Repplica %d handling view id %d req id %d\n", comp->node_id, new_entry->msg_vs.view_id, new_entry->msg_vs.req_id);
+            CON_LOG(comp, "Replica %d handling view id %d req id %d\n", comp->node_id, new_entry->msg_vs.view_id, new_entry->msg_vs.req_id);
             if(new_entry->msg_vs.view_id < comp->cur_view.view_id){
                 // TODO
                 //goto reloop;
@@ -219,7 +219,7 @@ void *handle_accept_req(void* arg)
                 {
                     retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&retrieve_data);
                     send(sock, retrieve_data->data, retrieve_data->data_size, 0);
-                    CON_LOG(comp, "Repplica %d try to exed view id %d req id %d\n", comp->node_id, ltovs(index).view_id, ltovs(index).req_id);
+                    CON_LOG(comp, "Replica %d try to exed view id %d req id %d\n", comp->node_id, ltovs(index).view_id, ltovs(index).req_id);
                 }
                 comp->committed = new_entry->req_canbe_exed;
             }
