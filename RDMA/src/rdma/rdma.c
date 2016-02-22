@@ -1,3 +1,5 @@
+#include <rdma_ibv.h>
+
 #define INIT            0x2
 #define JOINED          0x4
 #define RC_ESTABLISHED  0x8
@@ -42,7 +44,12 @@ int rdma_init(node_id_t node_id, int size, const char* log_path, const char* sta
     }
 
     rdma_data.input->server_idx = node_id;
-    rdma_data.input->srv_type = start_mode;
+    if(*start_mode == 's'){
+    {
+        rdma_data.input->srv_type = SRV_TYPE_START;
+    }else{
+        rdma_data.input->srv_type = SRV_TYPE_JOIN;
+    }
     rdma_data.input->group_size = size;
 
     rdma_log_fp = rdma_data.input->rdma_log;
@@ -133,7 +140,7 @@ static void init_network_cb()
     /* Start poll event */   
     ev_idle_start(EV_A_ &poll_event);
     
-    if (*(rdma_data.input->srv_type) == 'p') {
+    if (SRV_TYPE_JOIN == data.input->srv_type) {
         /* Server joining the cluster */
         join_cluster_cb();
     }

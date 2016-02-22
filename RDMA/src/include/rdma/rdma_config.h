@@ -20,11 +20,12 @@ struct cid_t
 };
 typedef struct cid_t cid_t;
 
+typedef struct server_t server_t;
 struct rdma_config_t 
 {
 	cid_t cid;         		/* configuration identifier */
 
-    servers_t *servers;      /* array with info for each server */
+    server_t *servers;      /* array with info for each server */
 
     uint8_t idx;            /* own index in configuration */
     uint8_t len;            /* fixed length of configuration array */

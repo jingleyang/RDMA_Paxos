@@ -3,6 +3,7 @@
 #define CONSENSUS_H
 #include "../util/common-header.h"
 #include "../db/db-interface.h"
+#include "../rdma/rdma_ibv_rc.h"
 
 typedef uint64_t db_key_type;
 

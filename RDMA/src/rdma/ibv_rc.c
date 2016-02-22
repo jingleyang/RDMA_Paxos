@@ -330,43 +330,31 @@ rc_qp_rtr_to_rts( ib_ep_t *ep, int qp_id )
 /* ================================================================== */
 /* Handle RDMA operations */
 
-/**
- * Post send operation
- */
-void RDMA_write(void* buf, uint32_t len, uint32_t offset, uint8_t target){
+void rdma_write(uint8_t target, void* buf, uint32_t len, uint32_t offset){
+    ib_ep_t *ep;
     rem_mem_t rm;
+
+    ep = (ib_ep_t*)RDMA_DATA->config.servers[target].ep;
+
+    if (0 == ep->rc_connected) 
+    {
+        posted_sends = -1;  // insuccess
+        continue;
+    }
+
     rm.raddr = ep->rc_ep.rmt_mr.raddr + offset;
     rm.rkey = ep->rc_ep.rmt_mr.rkey;
-    if (target == 0)
-    {
-        uint8_t size = get_group_size(RDMA_DATA->config);
-        for (int i = 0; i < size; i++){
-            if (i == RDMA_DATA->config.idx){
-                continue;
-            }
-            if (!CID_IS_SERVER_ON(RDMA_DATA->config.cid, i)){
-                continue;
-            }
+    posted_sends = 1;
 
-            ep = (ib_ep_t*)RDMA_DATA->config.servers[i].ep;
-
-            post_send(i, buf, len, IBDEV->lcl_mr, IBV_WR_RDMA_WRITE, rm);
-        }
-    }else{
-            ep = (ib_ep_t*)RDMA_DATA->config.servers[target].ep;
-
-            post_send(i, buf, len, IBDEV->lcl_mr, IBV_WR_RDMA_WRITE, rm);
-    }
+    post_send(target, LOG_QP, buf, len, );
 }
-
-/* ================================================================== */
-/* Handle RDMA operations */
 
 /**
  * Post send operation
  */
 static int 
 post_send( uint8_t server_id,
+           int qp_id,
            void *buf,
            uint32_t len,
            struct ibv_mr *mr,

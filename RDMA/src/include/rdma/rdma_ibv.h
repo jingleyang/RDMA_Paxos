@@ -1,3 +1,5 @@
+#include <infiniband/verbs.h> /* OFED IB verbs */
+
 #define mtu_value(mtu) \
     ((mtu == IBV_MTU_256) ? 256 :    \
     (mtu == IBV_MTU_512) ? 512 :    \
@@ -85,3 +87,13 @@ struct ib_device_t{
     void *udata;
 };
 typedef struct ib_device_t ib_device_t;
+
+/* ================================================================== */
+
+int init_ib_device();
+int start_ib_ud();
+int init_ib_srv_data( void *data );
+int init_ib_rc();
+
+int ib_join_cluster();
+int ib_exchange_rc_info();

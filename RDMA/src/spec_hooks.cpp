@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include "include/consensus/consensus.h"
-#include "include/rdma/rdma.h"
+#include "include/rdma/rdma_server.h"
 #include "include/util/debug.h"
 
 #define dprintf(fmt...)
@@ -25,12 +25,12 @@ void tern_init_func(int argc, char **argv, char **env){
   if(saved_init_func)
     saved_init_func(argc, argv, env);
 
-  char* config_path = "/home/wangcheng/Downloads/RDMA_Paxos-master/shm/target/nodes.local.cfg";
+  printf("tern_init_func is called\n");
+  char* config_path = "/home/cheng/RDMA_Paxos/shm/target/nodes.local.cfg";
   char* log_path = NULL;
-  int64_t node_id = 2;
-  char* start_mode;
-  start_mode = (char*)malloc(sizeof(char));
-  *start_mode = 'p';
+  const char* start_mode = getenv("start_mode");
+  const char* id = getenv("node_id");
+  int64_t node_id = atoi(id);
   consensus_comp = init_consensus_comp(config_path, log_path, node_id, start_mode);
   rdma_init(consensus_comp->node_id, log_path, consensus_comp->group_size);
 
@@ -101,10 +101,15 @@ extern "C" int __libc_start_main(
   saved_init_func = (main_type)init_func;
 
   saved_fini_func = (fini_type)rtld_fini_func;
-  ret = orig_func((void*)my_main, argc, (char**)(&args),
-                  (fnptr_type)tern_init_func, (fnptr_type)fini_func,
-                  rtld_fini_func, stack_end);
 
+  char* target = "mongoose";
+  if (NULL != strstr(argv[0], target))
+  {
+    ret = orig_func((void*)my_main, argc, (char**)(&args), (fnptr_type)tern_init_func, (fnptr_type)fini_func, rtld_fini_func, stack_end);
+  }else{
+    ret = orig_func((void*)my_main, argc, (char**)(&args), (fnptr_type)saved_init_func, (fnptr_type)fini_func, rtld_fini_func, stack_end);
+  }
+  
   return ret;
 
 }
@@ -118,9 +123,7 @@ extern "C" ssize_t recv(int sockfd, void *buf, size_t len, int flags)
 
   if (consensus_comp->my_role == LEADER)
   {
-    CON_LOG(consensus_comp, "Leader trying to reach a consensus.\n");
     rsm_op(consensus_comp, buf, ret);
-    CON_LOG(consensus_comp, "Leader has reached reached a consensus.\n");
   }
 
   return ret;

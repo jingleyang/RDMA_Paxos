@@ -1,3 +1,5 @@
+#include <rdma_ibv_ud.h>
+
 extern FILE *rdma_log_fp;
 
 /* InfiniBand device */

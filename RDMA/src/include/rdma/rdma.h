@@ -1,30 +1,23 @@
-#ifndef RDMA_H
-#define RDMA_H 
+#include <debug.h>
 
-struct rdma_input_t {
-    FILE* rdma_log;
-    char* srv_type;
-    int group_size;
-    node_id_t server_idx;
-};
-typedef struct rdma_input_t rdma_input_t;
+#ifndef RDMA_H_
+#define RDMA_H_
 
-struct rdma_data_t {
-	rdma_input_t* input;
-	struct rb_root endpoints;   // RB-tree with remote endpoints
-	rdma_config_t config; // configuration 
-	log_t  *log;
-};
-typedef struct rdma_data_t rdma_data_t;
+#define MAX_SERVER_COUNT 13
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#define PAGE_SIZE 4096
 
-	int rdma_init(node_id_t node_id, int size, const char* log_path, const char* start_mode);
+/**
+ *  UD message types 
+ */
+#define MSG_NONE 0
+#define MSG_ERROR 13
+/* Initialization messages */
+#define RC_SYN      1
+#define RC_SYNACK   2
+#define RC_ACK      3
+/* Config messages */
+#define JOIN        211
+#define CFG_REPLY   214
 
-#ifdef __cplusplus
-}
-#endif
-
-#endif
+#endif /* RDMA_H_ */

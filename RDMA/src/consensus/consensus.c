@@ -1,6 +1,7 @@
 #include "../include/consensus/consensus.h"
 #include "../include/consensus/consensus-msg.h"
 
+#include "../include/rdma/rdma_server.h"
 #include "../include/config-comp/config-comp.h"
 
 #include <sys/stat.h>
@@ -90,6 +91,7 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     int ret = 1;
     pthread_mutex_lock(&comp->mutex);
     view_stamp next = get_next_view_stamp(comp);
+    CON_LOG(comp, "Leader trying to reach a consensus on view id %d, req id %d\n", next.view_id, next.req_id);
 
     /* record the data persistently */
     db_key_type record_no = vstol(next);
@@ -103,20 +105,18 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
         goto handle_submit_req_exit;
     }
     ret = 0;
+
     comp->highest_seen_vs.req_id = comp->highest_seen_vs.req_id + 1;
-    printf("highest seen vs req id is %d\n", comp->highest_seen_vs.req_id);
-    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, shared_memory.shm[comp->node_id]);
-    shared_memory.shm[comp->node_id] = (log_entry*)((char*)shared_memory.shm[comp->node_id] + log_entry_len(new_entry));//TODO pointer move
+    uint32_t offset = rdma_data.log->tail + sizeof(log_t);
+    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, rdma_data.log);
     pthread_mutex_unlock(&comp->mutex);
-    CON_LOG(comp, "the new entry's msg_vs view id is %d and req id is %d, req_canbe_exed view id is %d and req id is %d\n", new_entry->msg_vs.view_id, new_entry->msg_vs.req_id, new_entry->req_canbe_exed.view_id, new_entry->req_canbe_exed.req_id);
+
     if(comp->group_size > 1){
         for (int i = 0; i < comp->group_size; i++) {
-            //TODO RDMA write
-
             if (i == comp->node_id)
                 continue;
-            memcpy(shared_memory.shm[i], new_entry, log_entry_len(new_entry));
-            shared_memory.shm[i] = (log_entry*)((char*)shared_memory.shm[i] + log_entry_len(new_entry));//TODO pointer move
+
+            rdma_write(i, new_entry, log_entry_len(new_entry), offset);
         }
 
 recheck:
@@ -141,8 +141,10 @@ handle_submit_req_exit:
     if(record_data != NULL){
         free(record_data);
     }
-    //TODO: do we need the lock here?`
+    //TODO: do we need the lock here?
+    while (new_entry->msg_vs.req_id > comp->committed.req_id + 1);
     comp->committed.req_id = comp->committed.req_id + 1;
+    CON_LOG(comp, "Leader finished the consensus on view id %d, req id %d\n", next.view_id, next.req_id);
     return ret;
 }
 
@@ -158,21 +160,23 @@ static void* build_accept_ack(consensus_component* comp, view_stamp* vs){
 void *handle_accept_req(void* arg)
 {
     consensus_component* comp = arg;
-  
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    int connected = 0;
+
+    db_key_type start;
+    db_key_type end;
+    db_key_type index;
+
+    size_t data_size;
+    request_record* retrieve_data= NULL;
     
     while (1)
     {
-        log_entry* new_entry = shared_memory.shm[comp->node_id];
+        log_entry* new_entry = (log_entry*)((char*)shared_memory.shm[comp->node_id] + shared_memory.log->tail);
         
         if (new_entry->req_canbe_exed.view_id != 0)//TODO atmoic opeartion
         {
-            if(connected == 0){
-                connect(sock, (struct sockaddr*)&comp->sys_addr.c_addr, comp->sys_addr.c_sock_len);
-                connected = 1;
-            }
-            CON_LOG(comp, "Replica handle new req. The new entry's msg_vs view id is %d and req id is %d, req_canbe_exed view id is %d and req id is %d\n", new_entry->msg_vs.view_id, new_entry->msg_vs.req_id, new_entry->req_canbe_exed.view_id, new_entry->req_canbe_exed.req_id)
+            int sock = socket(AF_INET, SOCK_STREAM, 0);
+            connect(sock, (struct sockaddr*)&comp->sys_addr.c_addr, comp->sys_addr.c_sock_len); //TODO: why? Broken pipe. Maybe the server closes the socket
+            CON_LOG(comp, "Replica %d handling view id %d req id %d\n", comp->node_id, new_entry->msg_vs.view_id, new_entry->msg_vs.req_id);
             if(new_entry->msg_vs.view_id < comp->cur_view.view_id){
                 // TODO
                 //goto reloop;
@@ -197,31 +201,26 @@ void *handle_accept_req(void* arg)
 
             // record the data persistently 
             store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data);
-            shared_memory.shm[comp->node_id] = (log_entry*)((char*)shared_memory.shm[comp->node_id] + log_entry_len(new_entry));//TODO pointer move
 
+            uint32_t offset = rdma_data.log->tail + ACCEPT_ACK_SIZE* comp->node_id;
             accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
 
-            accept_ack* offset = (accept_ack*)(shared_memory.shm[new_entry->node_id]);
-            for (int i = 0; i < comp->node_id; ++i)
-            {
-                offset++;
-            }
+            uint32_t offset;
 
-            memcpy(offset, reply, ACCEPT_ACK_SIZE);
+            /* server_id, qp_id, buf, len, mr, opcode, signaled, rm, posted_sends */ 
+            rdma_write(new_entry->node_id, reply, ACCEPT_ACK_SIZE, offset);
 
-            shared_memory.shm[new_entry->node_id] = (log_entry*)((char*)shared_memory.shm[new_entry->node_id] + log_entry_len(new_entry));//TODO pointer move
-
-            size_t data_size;
-            record_data = NULL;
+            free(record_data);
+            free(reply);
             if(view_stamp_comp(new_entry->req_canbe_exed, comp->committed) > 0)
             {
-                db_key_type start = vstol(comp->committed)+1;
-                db_key_type end = vstol(new_entry->req_canbe_exed);
-                for(db_key_type index = start; index <= end; index++)
+                start = vstol(comp->committed)+1;
+                end = vstol(new_entry->req_canbe_exed);
+                for(index = start; index <= end; index++)
                 {
-                    retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&record_data);
-                    CON_LOG(comp, "Now I can exed a request. view id is %d, req id is %d.\n", ltovs(index).view_id, ltovs(index).req_id);
-                    send(sock, record_data->data, record_data->data_size, 0);
+                    retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&retrieve_data);
+                    send(sock, retrieve_data->data, retrieve_data->data_size, 0);
+                    CON_LOG(comp, "Replica %d try to exed view id %d req id %d\n", comp->node_id, ltovs(index).view_id, ltovs(index).req_id);
                 }
                 comp->committed = new_entry->req_canbe_exed;
             }
