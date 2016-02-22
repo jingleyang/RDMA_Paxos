@@ -1,10 +1,5 @@
 #include <rdma_ibv.h>
 
-#define INIT            0x2
-#define JOINED          0x4
-#define RC_ESTABLISHED  0x8
-uint64_t rdma_state;
-
 FILE * rdma_log_fp;
 
 rdma_data_t rdma_data;
@@ -77,10 +72,6 @@ static int init_rdma_data()
     /* Cannot have more than MAX_SERVER_COUNT servers */
     rdma_data.config.len = MAX_SERVER_COUNT;
 
-    for (i = 0; i < data.input->group_size; i++) {
-        CID_SERVER_ADD(data.config.cid, i);
-    }
-
     rdma_data.config.servers = (server_t*)malloc(rdma_data.config.len * sizeof(server_t));
     if (NULL == rdma_data.config.servers) {
         rdma_error_return(1, rdma_log_fp, "Cannot allocate configuration array\n");
@@ -134,8 +125,6 @@ static void init_network_cb()
     if (0 != rc) {
         rdma_error(rdma_log_fp, "Cannot start IB UD\n");
     }
-
-    rdma_state |= INIT;
     
     /* Start poll event */   
     ev_idle_start(EV_A_ &poll_event);
@@ -213,19 +202,16 @@ static void poll_ud()
     switch(type) {
         case CFG_REPLY:
         {
-            rdma_state |= JOINED;
-            info(rdma_log_fp, "I got accepted into the cluster: idx=%"PRIu8"\n", 
-                rdma_data.config.idx); PRINT_CID_(rdma_data.config.cid);
+            info(rdma_log_fp, "I got accepted into the cluster: idx=%"PRIu8"\n", rdma_data.config.idx);
             
             /* Start RC discovery */
-            exchange_rc_info_cb()
+            exchange_rc_info_cb();
             break;
         }
         case RC_SYNACK:
         case RC_ACK:
         {
-            if (!(rdma_state & RC_ESTABLISHED)) {
-                rdma_state |= RC_ESTABLISHED;
+            info(rdma_log_fp, "RC ESTABLISHED\n");
         }
     }
 }

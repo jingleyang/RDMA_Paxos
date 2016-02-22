@@ -1,3 +1,5 @@
+#include <rdma_ibv_rc.h>
+
 extern FILE *rdma_log_fp;
 
 /* InfiniBand device */
@@ -94,7 +96,7 @@ int rc_memory_reg()
     return 0;
 }
 
-int rc_qp_create(ib_ep_t* ep )
+int rc_qp_create(ib_ep_t* ep)
 {
     int i;
     struct ibv_qp_init_attr qp_init_attr;
@@ -306,7 +308,7 @@ rc_qp_rtr_to_rts( ib_ep_t *ep, int qp_id )
     attr.timeout        = 1;    // ~ 8 us
     attr.retry_cnt      = 0;    // max is 7
     attr.rnr_retry      = 7;
-    attr.sq_psn         = (LOG_QP == qp_id) ? psn : CTRL_PSN;
+    attr.sq_psn         = (LOG_QP == qp_id) ? psn : CTRL_PSN; // PSN for send queue
 //debug(rdma_log_fp, "MY SQ PSN: %"PRIu32"\n", attr.sq_psn);
     attr.max_rd_atomic = IBDEV->ib_dev_attr.max_qp_rd_atom;
 

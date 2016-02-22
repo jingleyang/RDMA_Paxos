@@ -752,6 +752,7 @@ int ud_join_cluster()
     
     memset(request, 0, len);
     request->id = req_id;
+    request->idx = RDMA_DATA->config.idx;
     request->type = JOIN;
 
     //Sending JOIN request
@@ -776,29 +777,21 @@ static int handle_server_join_request(struct ibv_wc *wc, ud_hdr_t *request)
     }
     ep->ud_ep.qpn = wc->src_qp;
 
-    /* Find first empty entry; or maybe I already reply to this "client" */
-    ib_ep_t *ib_ep;
-    for (i = size-1; i < size; i--) {
-        if (CID_IS_SERVER_ON(RDMA_DATA->config.cid, i)) {
-            ib_ep = (ib_ep_t*)RDMA_DATA->config.servers[i].ep;
-            if (ib_ep->ud_ep.lid == wc->slid) {
-                /* There is already a server with this LID in 
-                the configuration; check if the JOIN request is repeated
-                TODO should get last_req_id from a protocol SM !!! */
-                if (ep->last_req_id == request->id) {
-                    /* I received this request before */
-                    /* Probably the reply got lost (UD) */
-                    rc = ud_send_clt_reply(wc->slid, request->id, CONFIG);
-                    if (0 != rc) {
-                        //Cannot send client reply
-                    }
-                    return 0;
-                }
-                return 0;
-            }
-            continue;
-        }
-    }
+    CID_SERVER_ADD(RDMA_DATA->config.cid, request->idx);
+
+    RDMA_DATA->config.req_id = request->id;
+    RDMA_DATA->config.clt_id = wc->slid;
+    
+    /* Initialize the new server */
+    server_t *new_server = &RDMA_DATA->config.servers[request->idx];
+    ib_ep = (ib_ep_t*)new_server->ep;
+    wc_to_ud_ep(&ib_ep->ud_ep, wc);
+    ib_ep->rc_connected = 0;
+    
+    /* Update request ID for this LID */
+    ep->last_req_id = request->id;
+
+    ud_send_clt_reply(wc->slid, request->id, CONFIG);
               
     return 0;
 }
@@ -811,7 +804,6 @@ static void handle_server_join_reply(struct ibv_wc *wc, reconf_rep_t *reply)
     }
     IBDEV->request_id++;
     
-    RDMA_DATA->config.idx = reply->idx;
     RDMA_DATA->config.cid = reply->cid; 
 }
 
@@ -838,7 +830,7 @@ int ud_exchange_rc_info()
     request->log_rm.rkey   = IBDEV->lcl_mr[LOG_QP]->rkey;
     request->idx           = RDMA_DATA->config.idx;
     
-    request->size = get_group_size(RDMA_DATA->config);
+    request->size = RDMA_DATA->config.size;
     for (i = 0, j = 0; i < request->size; i++, j += 1) {
         ep = (ib_ep_t*)RDMA_DATA->config.servers[i].ep;
         qpns[j] = ep->rc_ep.rc_qp[LOG_QP].qp->qp_num;
@@ -955,7 +947,7 @@ static int handle_rc_synack(struct ibv_wc *wc, rc_syn_t *msg)
 
         uint8_t i; 
         uint8_t connections = 0;
-        uint8_t size = get_group_size(RDMA_DATA->config);
+        uint8_t size = RDMA_DATA->config.size;
         for (i = 0; i < size; i++) {
             if (i == RDMA_DATA->config.idx) continue;
             if (!CID_IS_SERVER_ON(RDMA_DATA->config.cid, i)) continue;
@@ -1009,7 +1001,7 @@ static int handle_rc_ack(struct ibv_wc *wc, rc_ack_t *msg)
         ep->rc_connected = 1;
         
         uint8_t connections = 0;
-        uint8_t size = get_group_size(RDMA_DATA->config);
+        uint8_t size = RDMA_DATA->config.size;
         for (i = 0; i < size; i++) {
             if (i == SRV_DATA->config.idx) continue;
             if (!CID_IS_SERVER_ON(RDMA_DATA->config.cid, i)) continue;
@@ -1056,14 +1048,6 @@ int ud_send_clt_reply(uint16_t lid, uint64_t req_id, uint8_t type)
             psm_reply->hdr.id = req_id;
             psm_reply->hdr.type = CFG_REPLY;
             psm_reply->cid = RDMA_DATA->config.cid;
-            psm_reply->cid_idx = ep->cid_idx;
-            uint8_t size = get_group_size(RDMA_DATA->config);
-            for (i = 0; i < size; i++) {
-                ib_ep = (ib_ep_t*)RDMA_DATA->config.servers[i].ep;
-                if (NULL == ib_ep) continue;
-                if (ib_ep->ud_ep.lid == lid) break;
-            }
-            psm_reply->idx = i;
             len = sizeof(reconf_rep_t);
             break;
     }

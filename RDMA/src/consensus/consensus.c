@@ -202,12 +202,9 @@ void *handle_accept_req(void* arg)
             // record the data persistently 
             store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data);
 
-            uint32_t offset = rdma_data.log->tail + ACCEPT_ACK_SIZE* comp->node_id;
+            uint32_t offset = rdma_data.log->tail + sizeof(log_t) + ACCEPT_ACK_SIZE* comp->node_id;
             accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
 
-            uint32_t offset;
-
-            /* server_id, qp_id, buf, len, mr, opcode, signaled, rm, posted_sends */ 
             rdma_write(new_entry->node_id, reply, ACCEPT_ACK_SIZE, offset);
 
             free(record_data);

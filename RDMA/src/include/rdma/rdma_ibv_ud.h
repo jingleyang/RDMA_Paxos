@@ -12,7 +12,7 @@
 struct ud_hdr_t {
     uint64_t id;
     uint8_t type;
-    //uint8_t pad[7];
+    uint8_t idx;
 };
 typedef struct ud_hdr_t ud_hdr_t;
 

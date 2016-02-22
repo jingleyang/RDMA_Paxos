@@ -37,13 +37,14 @@ typedef struct rc_qp_t rc_qp_t;
 
 /* Endpoint RC info */
 struct rc_ep_t {
-    rem_mem_t rmt_mr;    // remote memory regions
+    rem_mem_t rmt_mr[2];    // remote memory regions
+    rc_qp_t   rc_qp[2];     // RC QPs (LOG & CTRL)
 };
 typedef struct rc_ep_t rc_ep_t;
 
 struct ib_ep_t {
+    ud_ep_t ud_ep;  // UD info
     rc_ep_t rc_ep;  // RC info
-    rc_qp_t   rc_qp;
     int rc_connected; /* rc_connected = 1 to mark RC established */
 };
 typedef struct ib_ep_t ib_ep_t;

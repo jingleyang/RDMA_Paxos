@@ -18,6 +18,5 @@ src \
 src/db \
 src/consensus \
 src/config-comp \
-src/shm \
 src/log \
 

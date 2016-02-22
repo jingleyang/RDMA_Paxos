@@ -1,3 +1,5 @@
+#include <rdma_ep_db.h>
+
 ep_t* ep_search(struct rb_root *root, const uint16_t lid )
 {
     struct rb_node *node = root->rb_node;
