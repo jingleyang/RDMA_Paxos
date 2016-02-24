@@ -777,10 +777,9 @@ static int handle_server_join_request(struct ibv_wc *wc, ud_hdr_t *request)
     }
     ep->ud_ep.qpn = wc->src_qp;
 
-    CID_SERVER_ADD(RDMA_DATA->config.cid, request->idx);
+    ib_ep_t *ib_ep;
 
-    RDMA_DATA->config.req_id = request->id;
-    RDMA_DATA->config.clt_id = wc->slid;
+    CID_SERVER_ADD(RDMA_DATA->config.cid, request->idx);
     
     /* Initialize the new server */
     server_t *new_server = &RDMA_DATA->config.servers[request->idx];
