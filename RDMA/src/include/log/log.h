@@ -2,8 +2,7 @@
 #include "../consensus/consensus.h"
 #include "../consensus/consensus-msg.h"
 
-#include "../rdma/rdma.h"
-#define LOG_SIZE  16384*PAGE_SIZE
+#define LOG_SIZE  16384*1024*4
 
 typedef struct log_entry_t{
     accept_ack ack[MAX_SERVER_COUNT];
@@ -17,11 +16,7 @@ typedef struct log_entry_t{
 
 struct log_t
 { 
-    uint64_t tail;  /* offset of the last entry */
-
-    uint64_t len;
-    
-    uint8_t entries[0];
+    uint64_t tail;
 };
 typedef struct log_t log_t;
 

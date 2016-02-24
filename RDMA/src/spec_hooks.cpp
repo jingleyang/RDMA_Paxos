@@ -35,11 +35,11 @@ void tern_init_func(int argc, char **argv, char **env){
   
   if (consensus_comp->my_role == SECONDARY)
   {
-    backup_rdma_init(log_path, consensus_comp->peer_pool[consensus_comp->cur_view.leader_id]->peer_address); 
+    rdma_backup_init(log_path, consensus_comp->peer_pool[consensus_comp->cur_view.leader_id]->peer_address); 
     pthread_t rep_th;
     pthread_create(&rep_th, NULL, &handle_accept_req, (void*)consensus_comp);
   }else{
-    primary_rdma_init(log_path, consensus_comp->my_address);
+    rdma_primary_init(log_path, consensus_comp->my_address);
   }
 }
 

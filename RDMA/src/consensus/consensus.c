@@ -1,7 +1,6 @@
 #include "../include/consensus/consensus.h"
 #include "../include/consensus/consensus-msg.h"
 
-#include "../include/rdma/rdma_server.h"
 #include "../include/config-comp/config-comp.h"
 
 #include <sys/stat.h>
@@ -107,16 +106,17 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     ret = 0;
 
     comp->highest_seen_vs.req_id = comp->highest_seen_vs.req_id + 1;
-    uint32_t offset = rdma_data.log->tail + sizeof(log_t);
-    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, rdma_data.log);
+    uint64_t offset = shared_memory.log->tail;
+    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, shared_memory.log, shared_memory.shm[comp->node_id]);
     pthread_mutex_unlock(&comp->mutex);
 
     if(comp->group_size > 1){
         for (int i = 0; i < comp->group_size; i++) {
+            //TODO RDMA write
+
             if (i == comp->node_id)
                 continue;
-
-            rdma_write(i, new_entry, log_entry_len(new_entry), offset);
+            memcpy((void*)((char*)shared_memory.shm[i] + offset), new_entry, log_entry_len(new_entry));
         }
 
 recheck:
@@ -201,11 +201,12 @@ void *handle_accept_req(void* arg)
 
             // record the data persistently 
             store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data);
+            uint64_t offset = shared_memory.log->tail + sizeof(accept_ack) * comp->node_id;
+            shared_memory.log->tail = shared_memory.log->tail + log_entry_len(new_entry);
 
-            uint32_t offset = rdma_data.log->tail + sizeof(log_t) + ACCEPT_ACK_SIZE* comp->node_id;
             accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
 
-            rdma_write(new_entry->node_id, reply, ACCEPT_ACK_SIZE, offset);
+            memcpy((void*)((char*)shared_memory.shm[new_entry->node_id] + offset), reply, ACCEPT_ACK_SIZE);
 
             free(record_data);
             free(reply);
