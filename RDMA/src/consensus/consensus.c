@@ -106,17 +106,16 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     ret = 0;
 
     comp->highest_seen_vs.req_id = comp->highest_seen_vs.req_id + 1;
-    uint64_t offset = shared_memory.log->tail;
-    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, shared_memory.log, shared_memory.shm[comp->node_id]);
+    uint64_t offset = srv_data.tail;
+    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, srv_data.buffer_mr->addr, srv_data.tail);
+    srv_data.tail = srv_data.tail + log_entry_len(new_entry);
     pthread_mutex_unlock(&comp->mutex);
 
     if(comp->group_size > 1){
         for (int i = 0; i < comp->group_size; i++) {
-            //TODO RDMA write
-
             if (i == comp->node_id)
                 continue;
-            memcpy((void*)((char*)shared_memory.shm[i] + offset), new_entry, log_entry_len(new_entry));
+            rdma_write(i, new_entry, log_entry_len(new_entry), offset);
         }
 
 recheck:
@@ -170,12 +169,12 @@ void *handle_accept_req(void* arg)
     
     while (1)
     {
-        log_entry* new_entry = (log_entry*)((char*)shared_memory.shm[comp->node_id] + shared_memory.log->tail);
+        log_entry* new_entry = (log_entry*)((char*)srv_data.buffer_mr->addr + srv_data.tail);
         
         if (new_entry->req_canbe_exed.view_id != 0)//TODO atmoic opeartion
         {
             int sock = socket(AF_INET, SOCK_STREAM, 0);
-            connect(sock, (struct sockaddr*)&comp->sys_addr.c_addr, comp->sys_addr.c_sock_len); //TODO: why? Broken pipe. Maybe the server closes the socket
+            connect(sock, (struct sockaddr*)&comp->my_address, sizeof(struct sockaddr_in)); //TODO: why? Broken pipe. Maybe the server closes the socket
             CON_LOG(comp, "Replica %d handling view id %d req id %d\n", comp->node_id, new_entry->msg_vs.view_id, new_entry->msg_vs.req_id);
             if(new_entry->msg_vs.view_id < comp->cur_view.view_id){
                 // TODO
@@ -201,12 +200,12 @@ void *handle_accept_req(void* arg)
 
             // record the data persistently 
             store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data);
-            uint64_t offset = shared_memory.log->tail + sizeof(accept_ack) * comp->node_id;
-            shared_memory.log->tail = shared_memory.log->tail + log_entry_len(new_entry);
+            uint64_t offset = srv_data.tail + ACCEPT_ACK_SIZE * comp->node_id;
+            srv_data.tail = srv_data.tail + log_entry_len(new_entry);
 
             accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
 
-            memcpy((void*)((char*)shared_memory.shm[new_entry->node_id] + offset), reply, ACCEPT_ACK_SIZE);
+            rdma_write(new_entry->node_id, reply, ACCEPT_ACK_SIZE, offset);
 
             free(record_data);
             free(reply);

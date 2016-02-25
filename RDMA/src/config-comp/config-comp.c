@@ -45,6 +45,12 @@ int consensus_read_config(struct consensus_component_t* comp, const char* config
             goto goto_config_error;
         }
 
+        peer_pool[i].peer_address = (struct sockaddr_in*)malloc(sizeof(struct sockaddr_in));
+        peer_pool[i].sock_len = sizeof(struct sockaddr_in);
+        peer_pool[i].peer_address->sin_family =AF_INET;
+        inet_pton(AF_INET,peer_ipaddr,&peer_pool[i].peer_address->sin_addr);
+        peer_pool[i].peer_address->sin_port = htons(peer_port);
+
         if(i == comp->node_id){
             const char* db_name;
             if(!config_setting_lookup_string(node_config,"db_name",&db_name)){
@@ -64,12 +70,6 @@ int consensus_read_config(struct consensus_component_t* comp, const char* config
             comp->my_address.sin_port = htons(peer_port);
             comp->my_address.sin_family = AF_INET;
             inet_pton(AF_INET,peer_ipaddr,&comp->my_address.sin_addr);
-        }else{
-            peer_pool[i].peer_address = (struct sockaddr_in*)malloc(sizeof(struct sockaddr_in));
-            peer_pool[i].sock_len = sizeof(struct sockaddr_in);
-            peer_pool[i].peer_address->sin_family =AF_INET;
-            inet_pton(AF_INET,peer_ipaddr,&peer_pool[i].peer_address->sin_addr);
-            peer_pool[i].peer_address->sin_port = htons(peer_port);
         }
     }
 

@@ -4,8 +4,8 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include "include/consensus/consensus.h"
-#include "include/rdma/rdma_server.h"
 #include "include/util/debug.h"
+#include "include/rdma/rdma_common.h"
 
 #define dprintf(fmt...)
 
@@ -30,16 +30,16 @@ void tern_init_func(int argc, char **argv, char **env){
   char* log_path = NULL;
   const char* start_mode = getenv("start_mode");
   const char* id = getenv("node_id");
-  int64_t node_id = atoi(id);
+  node_id_t node_id = atoi(id);
   consensus_comp = init_consensus_comp(config_path, log_path, node_id, start_mode);
   
   if (consensus_comp->my_role == SECONDARY)
   {
-    rdma_backup_init(log_path, consensus_comp->peer_pool[consensus_comp->cur_view.leader_id]->peer_address); 
+    backup_rdma_init(consensus_comp->group_size, consensus_comp->peer_pool[consensus_comp->cur_view.leader_id]->peer_address, consensus_comp->cur_view.leader_id); 
     pthread_t rep_th;
     pthread_create(&rep_th, NULL, &handle_accept_req, (void*)consensus_comp);
   }else{
-    rdma_primary_init(log_path, consensus_comp->my_address);
+    primary_rdma_init(consensus_comp->group_size, consensus_comp->my_address, consensus_comp->node_id);
   }
 }
 
