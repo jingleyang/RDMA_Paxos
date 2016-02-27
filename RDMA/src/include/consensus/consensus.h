@@ -48,7 +48,7 @@ typedef struct consensus_component_t consensus_component;
 extern "C" {
 #endif
 
-	consensus_component* init_consensus_comp(const char* config_path, const char* log_path, int64_t node_id, const char* start_mode);
+	consensus_component* init_consensus_comp(const char* config_path, const char* log_path, node_id_t node_id, const char* start_mode);
 	int rsm_op(consensus_component* comp, void* data, size_t data_size);
 	void *handle_accept_req(void* arg);
 

@@ -32,7 +32,7 @@ int consensus_read_config(struct consensus_component_t* comp, const char* config
     for(uint32_t i = 0; i < group_size; i++){ 
         config_setting_t *node_config = config_setting_get_elem(nodes_config, i);
         if(NULL==node_config){
-            err_log("CONSENSUS : Cannot Find Node%u's Address.\n", i);
+            con_err_log("CONSENSUS : Cannot Find Node%u's Address.\n", i);
             goto goto_config_error;
         }
 

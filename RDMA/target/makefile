@@ -13,8 +13,8 @@ RM := rm -rf
 -include src/consensus/subdir.mk
 -include src/log/subdir.mk
 -include src/config-comp/subdir.mk
+-include src/rdma/subdir.mk
 -include src/subdir.mk
--include src/rdma.mk
 -include subdir.mk
 -include objects.mk
 

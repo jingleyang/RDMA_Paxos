@@ -1,6 +1,8 @@
 #include "../include/consensus/consensus.h"
 #include "../include/consensus/consensus-msg.h"
 
+#include "../include/rdma/rdma_common.h"
+#include "../include/log/log.h"
 #include "../include/config-comp/config-comp.h"
 
 #include <sys/stat.h>
