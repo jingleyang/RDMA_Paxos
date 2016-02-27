@@ -60,4 +60,4 @@ Note: php-cgi: install-php/bin/php-cgi
 Use ./RDMA/mk to download and install the dependencies for the Paxos program (those libraries will be installed in ./.local, and sources files will be kept in ./dep-lib)  
   
 **Set env vars in ~/.bashrc.**  
-export LD_LIBRARY_PATH=/home/wangcheng/Downloads/RDMA_Paxos-master/RDMA/.local/lib:$LD_LIBRARY_PATH
+`export LD_LIBRARY_PATH=/home/wangcheng/Downloads/RDMA_Paxos-master/RDMA/.local/lib:$LD_LIBRARY_PATH`
