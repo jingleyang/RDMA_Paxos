@@ -54,5 +54,4 @@ To verify if the system is ready for the RDMA development you should be able to 
 `sudo apt-get install libxml2-dev`  
   
 2. ./apps/apache/mk  
-Note: --prefix: define the location where PHP has to be installed  
-&emsp;&emsp;&emsp;php-cgi: install-php/bin/php-cgi  
+Note: php-cgi: install-php/bin/php-cgi  
