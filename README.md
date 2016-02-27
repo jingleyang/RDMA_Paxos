@@ -6,12 +6,6 @@ OS: Ubuntu 14.04.02 64bit.
   
   
 **Setting up the RDMA Framework for Development**  
-0. Installing kernel source packages  
-`sudo apt-get install libtool autoconf automake linux-tools-common`  
-`sudo apt-get install fakeroot build-essential crash kexec-tools makedumpfile kernel-wedge`  
-`sudo apt-get build-dep linux`  
-`sudo apt-get install git-core libncurses5 libncurses5-dev libelf-dev`  
-`sudo apt-get install linux-headers-$(uname -r)`  
   
 1. Installing RDMA dependencies  
 `sudo apt-get install libibverbs1 libibcm1 libibcm-dev ibverbs-utils libibverbs-dev`  
