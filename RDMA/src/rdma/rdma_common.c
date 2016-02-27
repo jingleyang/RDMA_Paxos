@@ -214,7 +214,7 @@ int rdma_write(uint8_t target, void* buf, uint32_t len, uint32_t offset)
     memset(&sg, 0, sizeof(sg));
     sg.addr   = (uint64_t)buf;
     sg.length = len;
-    sg.lkey = srv_data.buffer_mr->lkey;
+    sg.lkey   = srv_data.log_mr->lkey;
 
     memset(&wr, 0, sizeof(wr));
     wr.sg_list    = &sg;
@@ -222,7 +222,7 @@ int rdma_write(uint8_t target, void* buf, uint32_t len, uint32_t offset)
     wr.opcode     = IBV_WR_SEND;
     wr.wr.rdma.remote_addr = srv_data.metadata_attr[target].address + offset;
     wr.wr.rdma.rkey        = srv_data.metadata_attr[target].stag.local_stag;;
-	rc = ibv_post_send(qp[target], &wr, &bad_wr);
+	rc = ibv_post_send(srv_data.qp[target], &wr, &bad_wr);
     if (0 != rc) {
         rdma_error("ibv_post_send failed because %s [%s]\n", strerror(rc), rc == EINVAL ? "EINVAL" : rc == ENOMEM ? "ENOMEM" : rc == EFAULT ? "EFAULT" : "UNKNOWN");
     }

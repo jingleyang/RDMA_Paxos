@@ -19,4 +19,5 @@ src/db \
 src/consensus \
 src/config-comp \
 src/log \
+src/rdma \
 

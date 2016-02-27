@@ -10,6 +10,7 @@
 #include <infiniband/verbs.h>
 
 #include "../util/common-header.h"
+#include "../consensus/consensus.h"
 
 #define CQ_CAPACITY (16)
 
@@ -29,7 +30,7 @@ struct __attribute((packed)) rdma_buffer_attr {
 struct dare_server_data_t {
   uint32_t tail;
   struct rdma_buffer_attr metadata_attr[MAX_SERVER_COUNT];
-  struct ibv_mr *buffer_mr;
+  struct ibv_mr *log_mr;
   struct ibv_qp *qp[MAX_SERVER_COUNT];
 };
 typedef struct dare_server_data_t dare_server_data_t;
@@ -60,8 +61,8 @@ void show_rdma_cmid(struct rdma_cm_id *id);
 #ifdef __cplusplus
 extern "C" {
 #endif
-  int primary_rdma_init(uint32_t group_size, struct sockaddr_in server_sockaddr, node_id_t node_id);
-  int backup_rdma_init(uint32_t group_size, struct sockaddr_in* server_sockaddr, node_id_t leader_id);
+
+  int init_rdma(consensus_component* consensus_comp);
 
 #ifdef __cplusplus
 }

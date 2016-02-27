@@ -32,15 +32,12 @@ void tern_init_func(int argc, char **argv, char **env){
   const char* id = getenv("node_id");
   node_id_t node_id = atoi(id);
   consensus_comp = init_consensus_comp(config_path, log_path, node_id, start_mode);
+  init_rdma(consensus_comp);
   
   if (consensus_comp->my_role == SECONDARY)
   {
-    backup_rdma_init(consensus_comp->group_size, consensus_comp->peer_pool[consensus_comp->cur_view.leader_id]->peer_address, consensus_comp->cur_view.leader_id); 
     pthread_t rep_th;
     pthread_create(&rep_th, NULL, &handle_accept_req, (void*)consensus_comp);
-  }else{
-    primary_rdma_init(consensus_comp->group_size, consensus_comp->my_address, consensus_comp->node_id);
-  }
 }
 
 typedef void (*fini_type)(void*);

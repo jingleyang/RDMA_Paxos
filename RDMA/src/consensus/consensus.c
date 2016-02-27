@@ -24,7 +24,7 @@ consensus_component* init_consensus_comp(const char* config_path, const char* lo
         if(*start_mode == 's'){
             comp->cur_view.leader_id = comp->node_id;
         }else{
-            comp->cur_view.leader_id = 0; //TODO
+            comp->cur_view.leader_id = 9999;
         }
         if(comp->cur_view.leader_id == comp->node_id){
             comp->my_role = LEADER;
@@ -107,7 +107,7 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
 
     comp->highest_seen_vs.req_id = comp->highest_seen_vs.req_id + 1;
     uint64_t offset = srv_data.tail;
-    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, srv_data.buffer_mr->addr, srv_data.tail);
+    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, srv_data.log_mr->addr, srv_data.tail);
     srv_data.tail = srv_data.tail + log_entry_len(new_entry);
     pthread_mutex_unlock(&comp->mutex);
 
@@ -169,7 +169,7 @@ void *handle_accept_req(void* arg)
     
     while (1)
     {
-        log_entry* new_entry = (log_entry*)((char*)srv_data.buffer_mr->addr + srv_data.tail);
+        log_entry* new_entry = (log_entry*)((char*)srv_data.log_mr->addr + srv_data.tail);
         
         if (new_entry->req_canbe_exed.view_id != 0)//TODO atmoic opeartion
         {
