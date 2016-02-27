@@ -12,16 +12,16 @@ Install depdendent libraries/tools:
   
   
 Setting up the RDMA Framework for Development  
-1. Installing kernel source packages    
+1. Installing kernel source packages  
 `sudo apt-get install libtool autoconf automake linux-tools-common`  
-`sudo apt-get install fakeroot build-essential crash kexec-tools makedumpfile kernel-wedge` 
+`sudo apt-get install fakeroot build-essential crash kexec-tools makedumpfile kernel-wedge`  
 `sudo apt-get build-dep linux`  
 `sudo apt-get install git-core libncurses5 libncurses5-dev libelf-dev`  
 `sudo apt-get install linux-headers-$(uname -r)`  
 
 2. Installing RDMA dependencies  
-sudo apt-get install libibverbs1 libibcm1 libibcm-dev ibverbs-utils libibverbs-dev  
-sudo apt-get install libibverbs1 librdmacm-dev librdmacm1 rdmacm-utils  
+`sudo apt-get install libibverbs1 libibcm1 libibcm-dev ibverbs-utils libibverbs-dev`  
+`sudo apt-get install libibverbs1 librdmacm-dev librdmacm1 rdmacm-utils`  
   
 3. Installation of the udev Rules File for Ubuntu Systems  
 Copy following udev rules file in proper location to make sure that your system will create RDMA related devices in /udev/infiniband/ correctly when proper kernel modules are inserted.  
