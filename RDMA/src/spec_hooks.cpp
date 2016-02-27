@@ -38,6 +38,7 @@ void tern_init_func(int argc, char **argv, char **env){
   {
     pthread_t rep_th;
     pthread_create(&rep_th, NULL, &handle_accept_req, (void*)consensus_comp);
+  }
 }
 
 typedef void (*fini_type)(void*);

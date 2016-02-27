@@ -43,7 +43,7 @@ struct ibv_mr* rdma_buffer_alloc(struct ibv_pd *pd, uint32_t size,
 		rdma_error("failed to allocate buffer, -ENOMEM\n");
 		return NULL;
 	}
-	debug("Buffer allocated: %p , len: %u \n", buf, size);
+	rdma_debug("Buffer allocated: %p , len: %u \n", buf, size);
 	mr = rdma_buffer_register(pd, buf, size, permission);
 	if(!mr){
 		free(buf);

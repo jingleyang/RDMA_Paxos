@@ -58,6 +58,8 @@ int process_work_completion_events(struct ibv_comp_channel *comp_channel,
 
 void show_rdma_cmid(struct rdma_cm_id *id);
 
+int rdma_write(uint8_t target, void* buf, uint32_t len, uint32_t offset);
+
 #ifdef __cplusplus
 extern "C" {
 #endif

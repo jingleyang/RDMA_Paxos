@@ -1,4 +1,5 @@
 #include "../include/rdma/rdma_common.h"
+#include "../include/log/log.h"
 
 static struct rdma_event_channel *cm_event_channel = NULL;
 static struct rdma_cm_id *cm_server_id = NULL, *cm_client_id = NULL;
@@ -15,7 +16,7 @@ static struct ibv_recv_wr client_recv_wr, *bad_client_recv_wr = NULL;
 static struct ibv_send_wr client_send_wr, *bad_client_send_wr = NULL;
 
 static struct ibv_recv_wr server_recv_wr, *bad_server_recv_wr = NULL;
-static struct ibv_recv_wr server_send_wr, *bad_server_send_wr = NULL;
+static struct ibv_send_wr server_send_wr, *bad_server_send_wr = NULL;
 
 static struct ibv_sge client_recv_sge, client_send_sge, server_recv_sge, server_send_sge;
 
@@ -222,7 +223,7 @@ static int client_send_metadata_to_server()
 	return 0;
 }
 
-static int client_lean()
+static int client_clean()
 {
 	int ret = -1;
 
@@ -264,6 +265,7 @@ static int client_lean()
 
 static int setup_client_resources()
 {
+	struct rdma_cm_event *cm_event = NULL;
 	int ret = -1;
 
 	ret = process_rdma_cm_event(cm_event_channel, RDMA_CM_EVENT_CONNECT_REQUEST, &cm_event);
@@ -299,7 +301,6 @@ static int setup_client_resources()
 
 static int start_rdma_server(struct sockaddr_in *server_addr) 
 {
-	struct rdma_cm_event *cm_event = NULL;
 	int ret = -1;
 
 	cm_event_channel = rdma_create_event_channel();
@@ -472,6 +473,7 @@ static int send_server_metadata_to_client()
 		rdma_error("Failed to send server metadata, errno: %d \n", -errno);
 		return -errno;
 	}
+	return 0;
 }
 
 /* ================================================================================= */
@@ -516,7 +518,7 @@ int init_rdma(consensus_component* consensus_comp)
 	}else{
 		for (int i = 0; i < consensus_comp->group_size; ++i)
 		{
-			client_prepare_connection(consensus_comp->peer_pool[i]->peer_address);
+			client_prepare_connection(consensus_comp->peer_pool[i].peer_address);
 			if (ret) { 
 				rdma_error("Failed to setup client connection , ret = %d \n", ret);
 				return ret;
