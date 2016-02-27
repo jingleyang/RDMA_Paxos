@@ -55,3 +55,6 @@ To verify if the system is ready for the RDMA development you should be able to 
   
 2. ./apps/apache/mk  
 Note: php-cgi: install-php/bin/php-cgi  
+  
+**Install the dependencies for the program**  
+Use ./RDMA/mk to download and install the dependencies for the Paxos program (those libraries will be installed in ./.local, and sources files will be kept in ./dep-lib)
