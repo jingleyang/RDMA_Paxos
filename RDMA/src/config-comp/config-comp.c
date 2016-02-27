@@ -14,6 +14,7 @@ int consensus_read_config(struct consensus_component_t* comp, const char* config
         goto goto_config_error;
     }
     comp->group_size = group_size;
+    comp->peer_pool = (peer*)malloc(group_size * sizeof(peer));
 
     if(group_size <= comp->node_id){
         con_err_log("CONSENSUS : Invalid Node Id\n");

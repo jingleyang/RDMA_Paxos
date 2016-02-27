@@ -1,6 +1,8 @@
 #include "../include/rdma/rdma_common.h"
 #include "../include/log/log.h"
 
+dare_server_data_t srv_data;
+
 static struct rdma_event_channel *cm_event_channel = NULL;
 static struct rdma_cm_id *cm_server_id = NULL, *cm_client_id = NULL;
 static struct ibv_pd *pd = NULL;
@@ -10,6 +12,7 @@ static struct ibv_qp_init_attr qp_init_attr;
 static struct ibv_qp *client_qp = NULL;
 
 static struct ibv_mr *client_metadata_mr = NULL, *log_buffer_mr = NULL, *server_metadata_mr = NULL;
+static void *log_buffer;
 static struct rdma_buffer_attr client_metadata_attr, server_metadata_attr;
 
 static struct ibv_recv_wr client_recv_wr, *bad_client_recv_wr = NULL;
@@ -87,8 +90,7 @@ static int client_prepare_connection(struct sockaddr_in *s_addr)
 
 	io_completion_channel = ibv_create_comp_channel(cm_client_id->verbs);
 	if (!io_completion_channel) {
-		rdma_error("Failed to create IO completion event channel, errno: %d\n",
-			       -errno);
+		rdma_error("Failed to create IO completion event channel, errno: %d\n", -errno);
 	return -errno;
 	}
 	rdma_debug("completion event channel created at : %p \n", io_completion_channel);
@@ -263,80 +265,37 @@ static int client_clean()
 
 /* ================================================================================= */
 
+
 static int setup_client_resources()
 {
-	struct rdma_cm_event *cm_event = NULL;
 	int ret = -1;
-
-	ret = process_rdma_cm_event(cm_event_channel, RDMA_CM_EVENT_CONNECT_REQUEST, &cm_event);
-	if (ret) {
-		rdma_error("Failed to get cm event, ret = %d \n" , ret);
-		return ret;
-	}
-
-	cm_client_id = cm_event->id;
-
-	ret = rdma_ack_cm_event(cm_event);
-	if (ret) {
-		rdma_error("Failed to acknowledge the cm event errno: %d \n", -errno);
-		return -errno;
-	}
-	rdma_debug("A new RDMA client connection id is stored at %p\n", cm_client_id);
-
 	if(!cm_client_id){
 		rdma_error("Client id is still NULL \n");
 		return -EINVAL;
 	}
 
-	ret = rdma_create_qp(cm_client_id, pd, &qp_init_attr);
-	if (ret) {
-		rdma_error("Failed to create QP due to errno: %d\n", -errno);
-		return -errno;
-	}
-
-	client_qp = cm_client_id->qp;
-	rdma_debug("Client QP created at %p\n", client_qp);
-	return ret;
-}
-
-static int start_rdma_server(struct sockaddr_in *server_addr) 
-{
-	int ret = -1;
-
-	cm_event_channel = rdma_create_event_channel();
-	if (!cm_event_channel) {
-		rdma_error("Creating cm event channel failed with errno : (%d)", -errno);
-		return -errno;
-	}
-	rdma_debug("RDMA CM event channel is created successfully at %p \n", cm_event_channel);
-
-	ret = rdma_create_id(cm_event_channel, &cm_server_id, NULL, RDMA_PS_TCP);
-	if (ret) {
-		rdma_error("Creating server cm id failed with errno: %d ", -errno);
-		return -errno;
-	}
-	rdma_debug("A RDMA connection id for the server is created \n");
-
-	pd = ibv_alloc_pd(cm_server_id->verbs);
+	pd = ibv_alloc_pd(cm_client_id->verbs);
 	if (!pd) {
 		rdma_error("Failed to allocate a protection domain errno: %d\n", -errno);
 		return -errno;
 	}
 	rdma_debug("A new protection domain is allocated at %p \n", pd);
 
-	io_completion_channel = ibv_create_comp_channel(cm_server_id->verbs);
+	io_completion_channel = ibv_create_comp_channel(cm_client_id->verbs);
 	if (!io_completion_channel) {
-		rdma_error("Failed to create an I/O completion event channel, %d\n", -errno);
+		rdma_error("Failed to create an I/O completion event channel, %d\n",
+				-errno);
 		return -errno;
 	}
 	rdma_debug("An I/O completion event channel is created at %p \n", io_completion_channel);
 
-	cq = ibv_create_cq(cm_server_id->verbs, CQ_CAPACITY, NULL, io_completion_channel, 0);
+	cq = ibv_create_cq(cm_client_id->verbs, CQ_CAPACITY, NULL, io_completion_channel, 0);
 	if (!cq) {
 		rdma_error("Failed to create a completion queue (cq), errno: %d\n", -errno);
 		return -errno;
 	}
 	rdma_debug("Completion queue (CQ) is created at %p with %d elements \n", cq, cq->cqe);
+
 	ret = ibv_req_notify_cq(cq, 0);
 	if (ret) {
 		rdma_error("Failed to request notifications on CQ errno: %d \n", -errno);
@@ -353,40 +312,33 @@ static int start_rdma_server(struct sockaddr_in *server_addr)
 	qp_init_attr.recv_cq = cq;
 	qp_init_attr.send_cq = cq;
 
-	log_buffer_mr = rdma_buffer_alloc(pd, LOG_SIZE, (IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE));
-	if(!log_buffer_mr){
-		rdma_error("Failed to register the first buffer\n");
-		return -ENOMEM;
-	}
-
-	server_metadata_attr.address = (uint64_t) log_buffer_mr->addr; 
-	server_metadata_attr.length = log_buffer_mr->length; 
-	server_metadata_attr.stag.local_stag = log_buffer_mr->lkey;
-
-	server_metadata_mr = rdma_buffer_register(pd, &server_metadata_attr, sizeof(server_metadata_attr), IBV_ACCESS_LOCAL_WRITE);
-	if(!server_metadata_mr) {
-		rdma_error("Failed to register the server metadata buffer\n");
-		return -ENOMEM;
-	}
-	
-	server_send_sge.addr = (uint64_t) server_metadata_mr->addr;
-	server_send_sge.length = (uint32_t) server_metadata_mr->length;
-	server_send_sge.lkey = server_metadata_mr->lkey;
-
-	ret = rdma_bind_addr(cm_server_id, (struct sockaddr*) server_addr);
+	ret = rdma_create_qp(cm_client_id, pd, &qp_init_attr);
 	if (ret) {
-		rdma_error("Failed to bind server address, errno: %d \n", -errno);
+		rdma_error("Failed to create QP due to errno: %d\n", -errno);
 		return -errno;
 	}
-	rdma_debug("Server RDMA CM id is successfully binded \n");
 
-	ret = rdma_listen(cm_server_id, 8);
+	client_qp = cm_client_id->qp;
+	rdma_debug("Client QP created at %p\n", client_qp);
+	return ret;
+}
+
+static int start_rdma_server() 
+{
+	ret = process_rdma_cm_event(cm_event_channel, RDMA_CM_EVENT_CONNECT_REQUEST, &cm_event);
 	if (ret) {
-		rdma_error("rdma_listen failed to listen on server address, errno: %d ", -errno);
+		rdma_error("Failed to get cm event, ret = %d \n" , ret);
+		return ret;
+	}
+
+	cm_client_id = cm_event->id;
+
+	ret = rdma_ack_cm_event(cm_event);
+	if (ret) {
+		rdma_error("Failed to acknowledge the cm event errno: %d \n", -errno);
 		return -errno;
 	}
-	printf("Server is listening successfully at: %s , port: %d \n", inet_ntoa(server_addr->sin_addr), ntohs(server_addr->sin_port));
-
+	rdma_debug("A new RDMA client connection id is stored at %p\n", cm_client_id);
 	return ret;
 }
 
@@ -400,6 +352,7 @@ static int accept_client_connection()
 		rdma_error("Client resources are not properly setup\n");
 		return -EINVAL;
 	}
+
     client_metadata_mr = rdma_buffer_register(pd, &client_metadata_attr, sizeof(client_metadata_attr), (IBV_ACCESS_LOCAL_WRITE));
 	if(!client_metadata_mr){
 		rdma_error("Failed to register client attr buffer\n");
@@ -462,6 +415,23 @@ static int send_server_metadata_to_client()
 	show_rdma_buffer_attr(&client_metadata_attr);
 	printf("The client has requested buffer length of : %u bytes \n", client_metadata_attr.length);
 
+	/* The same memory buffer can be registered several times (even with different access permissions) and every registration results in a different set of keys */
+	log_buffer_mr = rdma_buffer_register(pd, log_buffer, LOG_SIZE, (IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE));
+
+	server_metadata_attr.address = (uint64_t) log_buffer_mr->addr; 
+	server_metadata_attr.length = log_buffer_mr->length; 
+	server_metadata_attr.stag.local_stag = log_buffer_mr->lkey;
+
+	server_metadata_mr = rdma_buffer_register(pd, &server_metadata_attr, sizeof(server_metadata_attr), IBV_ACCESS_LOCAL_WRITE);
+	if(!server_metadata_mr) {
+		rdma_error("Failed to register the client metadata buffer, ret = %d \n", ret);
+		return ret;
+	}
+
+	server_send_sge.addr = (uint64_t) server_metadata_mr->addr;
+	server_send_sge.length = (uint32_t) server_metadata_mr->length;
+	server_send_sge.lkey = server_metadata_mr->lkey;
+
 	bzero(&server_send_wr, sizeof(server_send_wr));
 	server_send_wr.sg_list = &server_send_sge;
 	server_send_wr.num_sge = 1;
@@ -470,9 +440,10 @@ static int send_server_metadata_to_client()
 
 	ret = ibv_post_send(client_qp, &server_send_wr, &bad_server_send_wr);
 	if (ret) {
-		rdma_error("Failed to send server metadata, errno: %d \n", -errno);
+		rdma_error("Failed to send client metadata, errno: %d \n", -errno);
 		return -errno;
 	}
+
 	return 0;
 }
 
@@ -484,15 +455,49 @@ int init_rdma(consensus_component* consensus_comp)
 	if (consensus_comp->my_role == LEADER)
 	{
 		struct sockaddr_in server_sockaddr = consensus_comp->my_address;
-		ret = start_rdma_server(&server_sockaddr);
-		if (ret) {
-			rdma_error("RDMA server failed to start cleanly, ret = %d \n", ret);
-			return ret;
+		struct sockaddr_in *server_addr = &server_sockaddr;
+		struct rdma_cm_event *cm_event = NULL;
+		int ret = -1;
+
+		log_buffer = calloc(1, LOG_SIZE);
+
+		cm_event_channel = rdma_create_event_channel();
+		if (!cm_event_channel) {
+			rdma_error("Creating cm event channel failed with errno : (%d)", -errno);
+			return -errno;
 		}
+		rdma_debug("RDMA CM event channel is created successfully at %p \n", cm_event_channel);
+
+		ret = rdma_create_id(cm_event_channel, &cm_server_id, NULL, RDMA_PS_TCP);
+		if (ret) {
+			rdma_error("Creating server cm id failed with errno: %d ", -errno);
+			return -errno;
+		}
+		rdma_debug("A RDMA connection id for the server is created \n");
+
+		ret = rdma_bind_addr(cm_server_id, (struct sockaddr*) server_addr);
+		if (ret) {
+			rdma_error("Failed to bind server address, errno: %d \n", -errno);
+			return -errno;
+		}
+		rdma_debug("Server RDMA CM id is successfully binded \n");
+
+		ret = rdma_listen(cm_server_id, 8);
+		if (ret) {
+			rdma_error("rdma_listen failed to listen on server address, errno: %d ", -errno);
+			return -errno;
+		}
+		printf("Server is listening successfully at: %s , port: %d \n", inet_ntoa(server_addr->sin_addr), ntohs(server_addr->sin_port));
+
 		for (int i = 0; i < consensus_comp->group_size; ++i)
 		{
 			if (i == consensus_comp->node_id)
 				continue;
+			ret = start_rdma_server();
+			if (ret) {
+				rdma_error("RDMA server failed to start cleanly, ret = %d \n", ret);
+				return ret;
+			}
 			ret = setup_client_resources();
 			if (ret) { 
 				rdma_error("Failed to setup client resources, ret = %d \n", ret);
@@ -510,8 +515,6 @@ int init_rdma(consensus_component* consensus_comp)
 			}
 			srv_data.qp[i] = client_qp;
 			srv_data.metadata_attr[i] = client_metadata_attr;
-			cm_client_id++;
-			rdma_buffer_deregister(client_metadata_mr);	
 		}
 		srv_data.log_mr = log_buffer_mr;
 		return 0;
@@ -544,7 +547,7 @@ int init_rdma(consensus_component* consensus_comp)
 				return ret;
 			}
 			consensus_comp->cur_view.leader_id = i;
-			srv_data.qp[consensus_comp->cur_view.leader_id] == client_qp;
+			srv_data.qp[consensus_comp->cur_view.leader_id] = client_qp;
 			srv_data.log_mr = log_buffer_mr;
 			srv_data.metadata_attr[consensus_comp->cur_view.leader_id] = server_metadata_attr;
 			return ret;

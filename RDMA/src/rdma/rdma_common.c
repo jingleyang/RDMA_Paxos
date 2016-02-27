@@ -65,7 +65,7 @@ struct ibv_mr *rdma_buffer_register(struct ibv_pd *pd,
 		rdma_error("Failed to create mr on buffer, errno: %d \n", -errno);
 		return NULL;
 	}
-	debug("Registered: %p , len: %u , stag: 0x%x \n", 
+	rdma_debug("Registered: %p , len: %u , stag: 0x%x \n", 
 			mr->addr, 
 			(unsigned int) mr->length, 
 			mr->lkey);
@@ -80,7 +80,7 @@ void rdma_buffer_free(struct ibv_mr *mr)
 	}
 	void *to_free = mr->addr;
 	rdma_buffer_deregister(mr);
-	debug("Buffer %p free'ed\n", to_free);
+	rdma_debug("Buffer %p free'ed\n", to_free);
 	free(to_free);
 }
 
@@ -90,7 +90,7 @@ void rdma_buffer_deregister(struct ibv_mr *mr)
 		rdma_error("Passed memory region is NULL, ignoring\n");
 		return;
 	}
-	debug("Deregistered: %p , len: %u , stag : 0x%x \n", 
+	rdma_debug("Deregistered: %p , len: %u , stag : 0x%x \n", 
 			mr->addr, 
 			(unsigned int) mr->length, 
 			mr->lkey);
@@ -125,7 +125,7 @@ int process_rdma_cm_event(struct rdma_event_channel *echannel,
 		rdma_ack_cm_event(*cm_event);
 		return -1; // unexpected event :(
 	}
-	debug("A new %s type event is received \n", rdma_event_str((*cm_event)->event));
+	rdma_debug("A new %s type event is received \n", rdma_event_str((*cm_event)->event));
 	/* The caller must acknowledge the event */
 	return ret;
 }
@@ -168,7 +168,7 @@ int process_work_completion_events (struct ibv_comp_channel *comp_channel,
 	       }
 	       total_wc += ret;
        } while (total_wc < max_wc); 
-       debug("%d WC are completed \n", total_wc);
+       rdma_debug("%d WC are completed \n", total_wc);
        /* Now we check validity and status of I/O work completions */
        for( i = 0 ; i < total_wc ; i++) {
 	       if (wc[i].status != IBV_WC_SUCCESS) {
