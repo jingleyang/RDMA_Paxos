@@ -55,4 +55,4 @@ To verify if the system is ready for the RDMA development you should be able to 
   
 2. ./apps/apache/mk  
 Note: --prefix: define the location where PHP has to be installed  
-php-cgi: install-php/bin/php-cgi  
+      php-cgi: install-php/bin/php-cgi  
