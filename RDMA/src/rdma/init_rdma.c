@@ -325,6 +325,8 @@ static int setup_client_resources()
 
 static int start_rdma_server() 
 {
+	struct rdma_cm_event *cm_event = NULL;
+	int ret = -1;
 	ret = process_rdma_cm_event(cm_event_channel, RDMA_CM_EVENT_CONNECT_REQUEST, &cm_event);
 	if (ret) {
 		rdma_error("Failed to get cm event, ret = %d \n" , ret);
@@ -456,7 +458,6 @@ int init_rdma(consensus_component* consensus_comp)
 	{
 		struct sockaddr_in server_sockaddr = consensus_comp->my_address;
 		struct sockaddr_in *server_addr = &server_sockaddr;
-		struct rdma_cm_event *cm_event = NULL;
 		int ret = -1;
 
 		log_buffer = calloc(1, LOG_SIZE);
