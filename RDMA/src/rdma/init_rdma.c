@@ -506,22 +506,16 @@ int init_rdma(consensus_component* consensus_comp)
 				rdma_error("Failed to send server metadata to the client, ret = %d \n", ret);
 				return ret;
 			}
-			ret = disconnect_and_cleanup();
-			if (ret) { 
-				rdma_error("Failed to clean up resources properly, ret = %d \n", ret);
-				return ret;
-			}
 			srv_data.qp[i] = client_qp;
 			srv_data.metadata_attr[i] = client_metadata_attr;
-			client_metadata_attr++;
 			cm_client_id++;
+			rdma_buffer_deregister(client_metadata_mr);	
 		}
 		srv_data.log_mr = log_buffer_mr;
 		return 0;
 	}else{
 		for (int i = 0; i < consensus_comp->group_size; ++i)
 		{
-			/* code */
 			client_prepare_connection(consensus_comp->peer_pool[i]->peer_address);
 			if (ret) { 
 				rdma_error("Failed to setup client connection , ret = %d \n", ret);
