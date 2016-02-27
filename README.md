@@ -45,7 +45,7 @@ To load all required modules into the system, we have provided a script called a
 At this point you should be able to see the siw module loaded in your system. You can verify this by doing `lsmod | grep "siw"`.
 
 7. Verify  
-To verify if the system is ready for the RDMA development you should be able to see a few RDMA capable devices using command ibv_devices.  
+To verify if the system is ready for the RDMA development you should be able to see a few RDMA capable devices using command `ibv_devices`.  
 
 **build php**  
 Install depdendent libraries/tools:  
