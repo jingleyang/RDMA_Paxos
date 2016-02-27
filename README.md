@@ -49,5 +49,10 @@ At this point you should be able to see the siw module loaded in your system. Yo
 To verify if the system is ready for the RDMA development you should be able to see a few RDMA capable devices using command `ibv_devices`.  
 
 **build php**  
-Install depdendent libraries/tools:  
+  
+1. Install depdendent libraries/tools:  
 `sudo apt-get install libxml2-dev`  
+  
+2. ./apps/apache/mk
+Note: --prefix: define the location where PHP has to be installed  
+php-cgi: install-php/bin/php-cgi  
