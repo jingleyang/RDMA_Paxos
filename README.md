@@ -3,15 +3,9 @@
 This project combines RDMA (Remote Direct Memory Access) and Paxos.  
 
 OS: Ubuntu 14.04.02 64bit.  
-
-Commands to checkout a brand-new project:  
-`git clone https://github.com/wangchenghku/RDMA_Paxos` 
-
-Install depdendent libraries/tools:  
-`sudo apt-get install libxml2-dev`  
   
   
-Setting up the RDMA Framework for Development  
+**Setting up the RDMA Framework for Development**  
 1. Installing kernel source packages  
 `sudo apt-get install libtool autoconf automake linux-tools-common`  
 `sudo apt-get install fakeroot build-essential crash kexec-tools makedumpfile kernel-wedge`  
@@ -52,3 +46,7 @@ At this point you should be able to see the siw module loaded in your system. Yo
 
 7. Verify  
 To verify if the system is ready for the RDMA development you should be able to see a few RDMA capable devices using command ibv_devices.  
+
+**build php**  
+Install depdendent libraries/tools:  
+`sudo apt-get install libxml2-dev`  
