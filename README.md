@@ -7,6 +7,11 @@ OS: Ubuntu 14.04.02 64bit.
   
 **Setting up the RDMA Framework for Development**  
 1. Installing kernel source packages  
+
+2. 
+
+2. 
+
 `sudo apt-get install libtool autoconf automake linux-tools-common`  
 `sudo apt-get install fakeroot build-essential crash kexec-tools makedumpfile kernel-wedge`  
 `sudo apt-get build-dep linux`  
