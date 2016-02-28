@@ -49,8 +49,8 @@ At this point you should be able to see the siw module loaded in your system. Yo
 To verify if the system is ready for the RDMA development you should be able to see a few RDMA capable devices using command `ibv_devices`.  
   
 8. Debugging  
-For debugging there is a compile time macro debug in rdma_common.h. Enable it by defining `ACN_RDMA_DEBUG`.   
-To see what is happening at the device level, you can compile siw module with `DPRINT_MASK` defined to `DBG_ALL` in siw_debug.h file. The output of the device can be seen with `dmesg` command while running the experiment. These messages can show you common mistakes such as base and bound violations, permission errors, invalid stags etc.  
+For debugging there is a compile time macro `debug` in rdma_common.h. Enable it by defining `ACN_RDMA_DEBUG`.   
+To see what is happening at the device level, you can compile siw module with `DPRINT_MASK` defined to `DBG_ALL` in siw_debug.h file. The output of the device can be seen with `dmesg` command. These messages can show you common mistakes such as base and bound violations, permission errors, invalid stags etc.  
 
 **Build php**  
   
