@@ -23,8 +23,6 @@ static struct ibv_send_wr server_send_wr, *bad_server_send_wr = NULL;
 
 static struct ibv_sge client_recv_sge, client_send_sge, server_recv_sge, server_send_sge;
 
-/* ================================================================================= */
-
 static int client_prepare_connection(struct sockaddr_in *s_addr)
 {
 	struct rdma_cm_event *cm_event = NULL;
@@ -263,9 +261,6 @@ static int client_clean()
 	return 0;
 }
 
-/* ================================================================================= */
-
-
 static int setup_client_resources()
 {
 	int ret = -1;
@@ -449,8 +444,6 @@ static int send_server_metadata_to_client()
 	return 0;
 }
 
-/* ================================================================================= */
-
 int init_rdma(consensus_component* consensus_comp)
 {
 	int ret;
@@ -524,6 +517,8 @@ int init_rdma(consensus_component* consensus_comp)
 	}else{
 		for (int i = 0; i < consensus_comp->group_size; ++i)
 		{
+			if (i == consensus_comp->node_id)
+				continue;
 			ret = client_prepare_connection(consensus_comp->peer_pool[i].peer_address);
 			if (ret) { 
 				rdma_error("Failed to setup client connection , ret = %d \n", ret);
@@ -536,7 +531,7 @@ int init_rdma(consensus_component* consensus_comp)
 				return ret;
 			}
 			ret = client_connect_to_server();
-			if (ret) { 
+			if (ret > 0) { 
 				rdma_error("Failed to setup client connection , ret = %d \n", ret);
 				ret = client_clean();
 				if (ret) {

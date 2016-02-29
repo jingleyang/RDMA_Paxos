@@ -8,13 +8,10 @@ void show_rdma_cmid(struct rdma_cm_id *id)
 	}
 	printf("RDMA cm id at %p \n", id);
 	if(id->verbs && id->verbs->device)
-		printf("dev_ctx: %p (device name: %s) \n", id->verbs, 
-				id->verbs->device->name);
+		printf("dev_ctx: %p (device name: %s) \n", id->verbs, id->verbs->device->name);
 	if(id->channel)
 		printf("cm event channel %p\n", id->channel);
-	printf("QP: %p, port_space %x, port_num %u \n", id->qp, 
-			id->ps,
-			id->port_num);
+	printf("QP: %p, port_space %x, port_num %u \n", id->qp, id->ps, id->port_num);
 }
 
 void show_rdma_buffer_attr(struct rdma_buffer_attr *attr){
@@ -23,15 +20,14 @@ void show_rdma_buffer_attr(struct rdma_buffer_attr *attr){
 		return;
 	}
 	printf("---------------------------------------------------------\n");
-	printf("buffer attr, addr: %p , len: %u , stag : 0x%x \n", 
+	printf("buffer attr, addr: %p , len: %u , remote key : 0x%x \n", 
 			(void*) attr->address, 
 			(unsigned int) attr->length,
 			attr->buf_rkey);
 	printf("---------------------------------------------------------\n");
 }
 
-struct ibv_mr* rdma_buffer_alloc(struct ibv_pd *pd, uint32_t size,
-    enum ibv_access_flags permission) 
+struct ibv_mr* rdma_buffer_alloc(struct ibv_pd *pd, uint32_t size, enum ibv_access_flags permission) 
 {
 	struct ibv_mr *mr = NULL;
 	if (!pd) {
@@ -51,9 +47,7 @@ struct ibv_mr* rdma_buffer_alloc(struct ibv_pd *pd, uint32_t size,
 	return mr;
 }
 
-struct ibv_mr *rdma_buffer_register(struct ibv_pd *pd, 
-		void *addr, uint32_t length, 
-		enum ibv_access_flags permission)
+struct ibv_mr *rdma_buffer_register(struct ibv_pd *pd, void *addr, uint32_t length, enum ibv_access_flags permission)
 {
 	struct ibv_mr *mr = NULL;
 	if (!pd) {
@@ -65,10 +59,7 @@ struct ibv_mr *rdma_buffer_register(struct ibv_pd *pd,
 		rdma_error("Failed to create mr on buffer, errno: %d \n", -errno);
 		return NULL;
 	}
-	rdma_debug("Registered: %p , len: %u , stag: 0x%x \n", 
-			mr->addr, 
-			(unsigned int) mr->length, 
-			mr->lkey);
+	rdma_debug("Registered: %p , len: %u , local key: 0x%x , remote key: 0x%x \n", mr->addr, (unsigned int) mr->length, mr->lkey, mr->rkey);
 	return mr;
 }
 
@@ -90,22 +81,16 @@ void rdma_buffer_deregister(struct ibv_mr *mr)
 		rdma_error("Passed memory region is NULL, ignoring\n");
 		return;
 	}
-	rdma_debug("Deregistered: %p , len: %u , stag : 0x%x \n", 
-			mr->addr, 
-			(unsigned int) mr->length, 
-			mr->lkey);
+	rdma_debug("Deregistered: %p , len: %u , local key : 0x%x , remote key : 0x%x \n", mr->addr, (unsigned int) mr->length, mr->lkey, mr->rkey);
 	ibv_dereg_mr(mr);
 }
 
-int process_rdma_cm_event(struct rdma_event_channel *echannel, 
-		enum rdma_cm_event_type expected_event,
-		struct rdma_cm_event **cm_event)
+int process_rdma_cm_event(struct rdma_event_channel *echannel, enum rdma_cm_event_type expected_event, struct rdma_cm_event **cm_event)
 {
 	int ret = 1;
 	ret = rdma_get_cm_event(echannel, cm_event);
 	if (ret) {
-		rdma_error("Failed to retrieve a cm event, errno: %d \n",
-				-errno);
+		rdma_error("Failed to retrieve a cm event, errno: %d \n", -errno);
 		return -errno;
 	}
 	/* lets see, if it was a good event */
@@ -118,9 +103,7 @@ int process_rdma_cm_event(struct rdma_event_channel *echannel,
 	}
 	/* if it was a good event, was it of the expected type */
 	if ((*cm_event)->event != expected_event) {
-		rdma_error("Unexpected event received: %s [ expecting: %s ]", 
-				rdma_event_str((*cm_event)->event),
-				rdma_event_str(expected_event));
+		rdma_error("Unexpected event received: %s [ expecting: %s ]", rdma_event_str((*cm_event)->event), rdma_event_str(expected_event));
 		/* important, we acknowledge the event */
 		rdma_ack_cm_event(*cm_event);
 		return -1; // unexpected event :(
@@ -137,7 +120,7 @@ int process_work_completion_events (struct ibv_comp_channel *comp_channel,
 	struct ibv_cq *cq_ptr = NULL;
 	void *context = NULL;
 	int ret = -1, i, total_wc = 0;
-       /* We wait for the notification on the CQ channel */
+	/* We wait for the notification on the CQ channel */
 	ret = ibv_get_cq_event(comp_channel, /* IO channel where we are expecting the notification */ 
 		       &cq_ptr, /* which CQ has an activity. This should be the same as CQ we created before */ 
 		       &context); /* Associated CQ user context, which we did set */
@@ -152,10 +135,9 @@ int process_work_completion_events (struct ibv_comp_channel *comp_channel,
 	       return -errno;
        }
        /* We got notification. We reap the work completion (WC) element. It is 
-	* unlikely but a good practice it write the CQ polling code that 
-       * can handle zero WCs. ibv_poll_cq can return zero. Same logic as 
-       * MUTEX conditional variables in pthread programming.
-	*/
+        * unlikely but a good practice it write the CQ polling code that 
+        * can handle zero WCs. ibv_poll_cq can return zero.
+        */
        total_wc = 0;
        do {
 	       ret = ibv_poll_cq(cq_ptr /* the CQ, we got notification for */, 
@@ -172,10 +154,7 @@ int process_work_completion_events (struct ibv_comp_channel *comp_channel,
        /* Now we check validity and status of I/O work completions */
        for( i = 0 ; i < total_wc ; i++) {
 	       if (wc[i].status != IBV_WC_SUCCESS) {
-		       rdma_error("Work completion (WC) has error status: %d (means: %s) at index %d\n", 
-				       -wc[i].status, 
-				       ibv_wc_status_str(wc[i].status), 
-				       i);
+		       rdma_error("Work completion (WC) has error status: %d (means: %s) at index %d\n", -wc[i].status, ibv_wc_status_str(wc[i].status), i);
 		       /* return negative value */
 		       return -(wc[i].status);
 	       }
