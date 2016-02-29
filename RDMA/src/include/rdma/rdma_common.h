@@ -21,16 +21,14 @@
 struct __attribute((packed)) rdma_buffer_attr {
   uint64_t address;
   uint32_t length;
-  union stag {
-	  uint32_t local_stag;
-	  uint32_t remote_stag;
-  }stag;
+	uint32_t buf_rkey;
 };
 
 struct dare_server_data_t {
   uint32_t tail;
   struct rdma_buffer_attr metadata_attr[MAX_SERVER_COUNT];
-  struct ibv_mr *log_mr;
+  void *log_mr;
+  uint32_t local_key[MAX_SERVER_COUNT];
   struct ibv_qp *qp[MAX_SERVER_COUNT];
 };
 typedef struct dare_server_data_t dare_server_data_t;

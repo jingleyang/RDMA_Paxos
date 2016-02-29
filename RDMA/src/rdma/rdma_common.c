@@ -26,7 +26,7 @@ void show_rdma_buffer_attr(struct rdma_buffer_attr *attr){
 	printf("buffer attr, addr: %p , len: %u , stag : 0x%x \n", 
 			(void*) attr->address, 
 			(unsigned int) attr->length,
-			attr->stag.local_stag);
+			attr->buf_rkey);
 	printf("---------------------------------------------------------\n");
 }
 
@@ -214,14 +214,14 @@ int rdma_write(uint8_t target, void* buf, uint32_t len, uint32_t offset)
     memset(&sg, 0, sizeof(sg));
     sg.addr   = (uint64_t)buf;
     sg.length = len;
-    sg.lkey   = srv_data.log_mr->lkey;
+    sg.lkey   = srv_data.local_key[target]; /* Key of the local Memory Region */
 
     memset(&wr, 0, sizeof(wr));
     wr.sg_list    = &sg;
     wr.num_sge    = 1;
-    wr.opcode     = IBV_WR_SEND;
+    wr.opcode     = IBV_WR_RDMA_WRITE;
     wr.wr.rdma.remote_addr = srv_data.metadata_attr[target].address + offset;
-    wr.wr.rdma.rkey        = srv_data.metadata_attr[target].stag.local_stag;;
+    wr.wr.rdma.rkey        = srv_data.metadata_attr[target].buf_rkey;
 	rc = ibv_post_send(srv_data.qp[target], &wr, &bad_wr);
     if (0 != rc) {
         rdma_error("ibv_post_send failed because %s [%s]\n", strerror(rc), rc == EINVAL ? "EINVAL" : rc == ENOMEM ? "ENOMEM" : rc == EFAULT ? "EFAULT" : "UNKNOWN");

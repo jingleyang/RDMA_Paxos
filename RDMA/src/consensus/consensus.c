@@ -109,7 +109,7 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
 
     comp->highest_seen_vs.req_id = comp->highest_seen_vs.req_id + 1;
     uint64_t offset = srv_data.tail;
-    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, srv_data.log_mr->addr, srv_data.tail);
+    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, srv_data.log_mr, srv_data.tail);
     srv_data.tail = srv_data.tail + log_entry_len(new_entry);
     pthread_mutex_unlock(&comp->mutex);
 
@@ -149,15 +149,6 @@ handle_submit_req_exit:
     return ret;
 }
 
-static void* build_accept_ack(consensus_component* comp, view_stamp* vs){
-    accept_ack* msg = (accept_ack*)malloc(ACCEPT_ACK_SIZE);
-    if(NULL != msg){
-        msg->node_id = comp->node_id;
-        msg->msg_vs = *vs;
-    }
-    return msg;
-};
-
 void *handle_accept_req(void* arg)
 {
     consensus_component* comp = arg;
@@ -171,7 +162,7 @@ void *handle_accept_req(void* arg)
     
     while (1)
     {
-        log_entry* new_entry = (log_entry*)((char*)srv_data.log_mr->addr + srv_data.tail);
+        log_entry* new_entry = (log_entry*)((char*)srv_data.log_mr + srv_data.tail);
         
         if (new_entry->req_canbe_exed.view_id != 0)//TODO atmoic opeartion
         {
@@ -205,12 +196,14 @@ void *handle_accept_req(void* arg)
             uint64_t offset = srv_data.tail + ACCEPT_ACK_SIZE * comp->node_id;
             srv_data.tail = srv_data.tail + log_entry_len(new_entry);
 
-            accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
+            accept_ack* reply = (accept_ack*)((char*)new_entry + ACCEPT_ACK_SIZE * comp->node_id);
+            reply->node_id = comp->node_id;
+            reply->msg_vs.view_id = new_entry->msg_vs.view_id;
+            reply->msg_vs.req_id = new_entry->msg_vs.req_id;
 
             rdma_write(new_entry->node_id, reply, ACCEPT_ACK_SIZE, offset);
 
             free(record_data);
-            free(reply);
             if(view_stamp_comp(new_entry->req_canbe_exed, comp->committed) > 0)
             {
                 start = vstol(comp->committed)+1;

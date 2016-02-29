@@ -191,7 +191,7 @@ static int client_send_metadata_to_server()
 
 	client_metadata_attr.address = (uint64_t) log_buffer_mr->addr; 
 	client_metadata_attr.length = log_buffer_mr->length; 
-	client_metadata_attr.stag.local_stag = log_buffer_mr->lkey;
+	client_metadata_attr.buf_rkey = log_buffer_mr->rkey;
 
 	client_metadata_mr = rdma_buffer_register(pd, &client_metadata_attr, sizeof(client_metadata_attr), IBV_ACCESS_LOCAL_WRITE);
 	if(!client_metadata_mr) {
@@ -422,7 +422,7 @@ static int send_server_metadata_to_client()
 
 	server_metadata_attr.address = (uint64_t) log_buffer_mr->addr; 
 	server_metadata_attr.length = log_buffer_mr->length; 
-	server_metadata_attr.stag.local_stag = log_buffer_mr->lkey;
+	server_metadata_attr.buf_rkey = log_buffer_mr->rkey;
 
 	server_metadata_mr = rdma_buffer_register(pd, &server_metadata_attr, sizeof(server_metadata_attr), IBV_ACCESS_LOCAL_WRITE);
 	if(!server_metadata_mr) {
@@ -454,6 +454,7 @@ static int send_server_metadata_to_client()
 int init_rdma(consensus_component* consensus_comp)
 {
 	int ret;
+	srv_data.tail = 0;
 	if (consensus_comp->my_role == LEADER)
 	{
 		struct sockaddr_in server_sockaddr = consensus_comp->my_address;
@@ -516,13 +517,14 @@ int init_rdma(consensus_component* consensus_comp)
 			}
 			srv_data.qp[i] = client_qp;
 			srv_data.metadata_attr[i] = client_metadata_attr;
+			srv_data.local_key[i] = log_buffer_mr->lkey;
 		}
-		srv_data.log_mr = log_buffer_mr;
+		srv_data.log_mr = log_buffer_mr->addr;
 		return 0;
 	}else{
 		for (int i = 0; i < consensus_comp->group_size; ++i)
 		{
-			client_prepare_connection(consensus_comp->peer_pool[i].peer_address);
+			ret = client_prepare_connection(consensus_comp->peer_pool[i].peer_address);
 			if (ret) { 
 				rdma_error("Failed to setup client connection , ret = %d \n", ret);
 				return ret;
@@ -549,8 +551,9 @@ int init_rdma(consensus_component* consensus_comp)
 			}
 			consensus_comp->cur_view.leader_id = i;
 			srv_data.qp[consensus_comp->cur_view.leader_id] = client_qp;
-			srv_data.log_mr = log_buffer_mr;
+			srv_data.local_key[consensus_comp->cur_view.leader_id] = log_buffer_mr->lkey;
 			srv_data.metadata_attr[consensus_comp->cur_view.leader_id] = server_metadata_attr;
+			srv_data.log_mr = log_buffer_mr->addr;
 			return ret;
 		}
 	}
