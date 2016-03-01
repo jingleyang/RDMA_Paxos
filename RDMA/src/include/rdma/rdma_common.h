@@ -30,6 +30,7 @@ struct dare_server_data_t {
   void *log_mr;
   uint32_t local_key[MAX_SERVER_COUNT];
   struct ibv_qp *qp[MAX_SERVER_COUNT];
+  struct ibv_cq *cq[MAX_SERVER_COUNT];
 };
 typedef struct dare_server_data_t dare_server_data_t;
 

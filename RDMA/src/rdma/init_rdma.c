@@ -511,6 +511,7 @@ int init_rdma(consensus_component* consensus_comp)
 			srv_data.qp[i] = client_qp;
 			srv_data.metadata_attr[i] = client_metadata_attr;
 			srv_data.local_key[i] = log_buffer_mr->lkey;
+			srv_data.cq[i] = cq;
 		}
 		srv_data.log_mr = log_buffer_mr->addr;
 		return 0;
@@ -548,6 +549,7 @@ int init_rdma(consensus_component* consensus_comp)
 			srv_data.qp[consensus_comp->cur_view.leader_id] = client_qp;
 			srv_data.local_key[consensus_comp->cur_view.leader_id] = log_buffer_mr->lkey;
 			srv_data.metadata_attr[consensus_comp->cur_view.leader_id] = server_metadata_attr;
+			srv_data.cq[consensus_comp->cur_view.leader_id] = client_cq;
 			srv_data.log_mr = log_buffer_mr->addr;
 			return ret;
 		}

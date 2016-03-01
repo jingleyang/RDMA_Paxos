@@ -199,6 +199,7 @@ int rdma_write(uint8_t target, void* buf, uint32_t len, uint32_t offset)
     wr.sg_list    = &sg;
     wr.num_sge    = 1;
     wr.opcode     = IBV_WR_RDMA_WRITE;
+    wr.send_flags = IBV_SEND_SIGNALED; /* Specifying IBV_SEND_SIGNALED in wr.send_flags indicates that we want completion notification for this send request */
     wr.wr.rdma.remote_addr = srv_data.metadata_attr[target].address + offset;
     wr.wr.rdma.rkey        = srv_data.metadata_attr[target].buf_rkey;
 	rc = ibv_post_send(srv_data.qp[target], &wr, &bad_wr);
@@ -206,6 +207,20 @@ int rdma_write(uint8_t target, void* buf, uint32_t len, uint32_t offset)
         rdma_error("ibv_post_send failed because %s [%s]\n", strerror(rc), rc == EINVAL ? "EINVAL" : rc == ENOMEM ? "ENOMEM" : rc == EFAULT ? "EFAULT" : "UNKNOWN");
     }
 
-    //TODO: avoid overflow
+    //TODO: avoid QP overflow
+    
+    struct ibv_wc wc;
+    int poll_result;
+
+    do
+    {
+    	poll_result = ibv_poll_cq(srv_data.cq[target], 1, &wc);
+    }while(poll_result == 0);
+    if (wc.status != IBV_WC_SUCCESS)
+	{
+		rdma_error("Work completion (WC) has error status: %d (means: %s)\n", -wc.status, ibv_wc_status_str(wc.status));
+		//TODO
+	}
+
     return 0;
 }

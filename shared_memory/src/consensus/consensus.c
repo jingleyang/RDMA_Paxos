@@ -91,7 +91,6 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     int ret = 1;
     pthread_mutex_lock(&comp->mutex);
     view_stamp next = get_next_view_stamp(comp);
-    CON_LOG(comp, "Leader trying to reach a consensus on view id %d, req id %d\n", next.view_id, next.req_id);
 
     /* record the data persistently */
     db_key_type record_no = vstol(next);
@@ -145,18 +144,8 @@ handle_submit_req_exit:
     //TODO: do we need the lock here?
     while (new_entry->msg_vs.req_id > comp->committed.req_id + 1);
     comp->committed.req_id = comp->committed.req_id + 1;
-    CON_LOG(comp, "Leader finished the consensus on view id %d, req id %d\n", next.view_id, next.req_id);
     return ret;
 }
-
-static void* build_accept_ack(consensus_component* comp, view_stamp* vs){
-    accept_ack* msg = (accept_ack*)malloc(ACCEPT_ACK_SIZE);
-    if(NULL != msg){
-        msg->node_id = comp->node_id;
-        msg->msg_vs = *vs;
-    }
-    return msg;
-};
 
 void *handle_accept_req(void* arg)
 {
@@ -167,7 +156,13 @@ void *handle_accept_req(void* arg)
     db_key_type index;
 
     size_t data_size;
-    request_record* retrieve_data= NULL;
+    request_record* retrieve_data = NULL;
+
+    int sock;
+
+    struct timeval start_time;
+    struct timeval end_time;
+    unsigned long e_usec;
     
     while (1)
     {
@@ -175,9 +170,7 @@ void *handle_accept_req(void* arg)
         
         if (new_entry->req_canbe_exed.view_id != 0)//TODO atmoic opeartion
         {
-            int sock = socket(AF_INET, SOCK_STREAM, 0);
-            connect(sock, (struct sockaddr*)&comp->sys_addr.c_addr, comp->sys_addr.c_sock_len); //TODO: why? Broken pipe. Maybe the server closes the socket
-            CON_LOG(comp, "Replica %d handling view id %d req id %d\n", comp->node_id, new_entry->msg_vs.view_id, new_entry->msg_vs.req_id);
+            gettimeofday(&start, 0);
             if(new_entry->msg_vs.view_id < comp->cur_view.view_id){
                 // TODO
                 //goto reloop;
@@ -205,24 +198,30 @@ void *handle_accept_req(void* arg)
             uint64_t offset = shared_memory.log->tail + sizeof(accept_ack) * comp->node_id;
             shared_memory.log->tail = shared_memory.log->tail + log_entry_len(new_entry);
 
-            accept_ack* reply = build_accept_ack(comp, &new_entry->msg_vs);
+            accept_ack* reply = (accept_ack*)((char*)new_entry + ACCEPT_ACK_SIZE * comp->node_id);
+            reply->node_id = comp->node_id;
+            reply->msg_vs.view_id = new_entry->msg_vs.view_id;
+            reply->msg_vs.req_id = new_entry->msg_vs.req_id;
 
             memcpy((void*)((char*)shared_memory.shm[new_entry->node_id] + offset), reply, ACCEPT_ACK_SIZE);
 
             free(record_data);
-            free(reply);
             if(view_stamp_comp(new_entry->req_canbe_exed, comp->committed) > 0)
             {
+                sock = socket(AF_INET, SOCK_STREAM, 0);
+                connect(sock, (struct sockaddr*)&comp->sys_addr.c_addr, comp->sys_addr.c_sock_len); //TODO: why? Broken pipe. Maybe the server closes the socket
                 start = vstol(comp->committed)+1;
                 end = vstol(new_entry->req_canbe_exed);
                 for(index = start; index <= end; index++)
                 {
                     retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&retrieve_data);
                     send(sock, retrieve_data->data, retrieve_data->data_size, 0);
-                    CON_LOG(comp, "Replica %d try to exed view id %d req id %d\n", comp->node_id, ltovs(index).view_id, ltovs(index).req_id);
                 }
                 comp->committed = new_entry->req_canbe_exed;
             }
+            gettimeofday(&end, 0);
+            e_usec = ((end.tv_sec * 1000000) + end.tv_usec) - ((start.tv_sec * 1000000) + start.tv_usec);
+            CON_LOG(comp, "%lu\n", e_usec);
         }
     }
 };
