@@ -5,7 +5,7 @@
 
 struct shm_data_t {
 	void* shm[MAX_SERVER_COUNT];
-	log_t* log;
+	uint64_t tail;
 };
 
 typedef struct shm_data_t shm_data;

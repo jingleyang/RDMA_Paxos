@@ -106,9 +106,16 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     ret = 0;
 
     comp->highest_seen_vs.req_id = comp->highest_seen_vs.req_id + 1;
-    uint64_t offset = shared_memory.log->tail;
-    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, shared_memory.log, shared_memory.shm[comp->node_id]);
+    uint64_t offset = shared_memory.tail;
+    log_entry* new_entry = (log_entry*)((char*)shared_memory.shm[comp->node_id] + shared_memory.tail);
+    new_entry->data_size = data_size;
+    shared_memory.tail = shared_memory.tail + log_entry_len(new_entry);
     pthread_mutex_unlock(&comp->mutex);
+    new_entry->node_id = comp->node_id;
+    new_entry->req_canbe_exed.view_id = comp->committed.view_id;
+    new_entry->req_canbe_exed.req_id = comp->committed.req_id;
+    new_entry->msg_vs = next;
+    memcpy(new_entry->data, data, data_size);
 
     if(comp->group_size > 1){
         for (int i = 0; i < comp->group_size; i++) {
@@ -122,6 +129,8 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
 recheck:
         for (int i = 0; i < MAX_SERVER_COUNT; i++)
         {
+            if (i == comp->node_id)
+                continue;
             if (new_entry->ack[i].msg_vs.view_id == next.view_id && new_entry->ack[i].msg_vs.req_id == next.req_id)
             {
                 update_record(record_data, new_entry->ack[i].node_id);
@@ -195,8 +204,8 @@ void *handle_accept_req(void* arg)
 
             // record the data persistently 
             store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data);
-            uint64_t offset = shared_memory.log->tail + sizeof(accept_ack) * comp->node_id;
-            shared_memory.log->tail = shared_memory.log->tail + log_entry_len(new_entry);
+            uint64_t offset = shared_memory.tail + sizeof(accept_ack) * comp->node_id;
+            shared_memory.tail = shared_memory.tail + log_entry_len(new_entry);
 
             accept_ack* reply = (accept_ack*)((char*)new_entry + ACCEPT_ACK_SIZE * comp->node_id);
             reply->node_id = comp->node_id;
