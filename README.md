@@ -69,4 +69,3 @@ makefile: `-L"$(ROOT_DIR)/../.local/lib"`
 `export LD_LIBRARY_PATH=/home/wangcheng/Downloads/RDMA_Paxos-master/RDMA/.local/lib:$LD_LIBRARY_PATH`
 
 
-test
