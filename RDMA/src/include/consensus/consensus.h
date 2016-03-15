@@ -11,14 +11,10 @@ typedef enum con_role_t{
     SECONDARY = 1,
 }con_role;
 
-typedef struct my_address_t{
-    struct sockaddr_in c_addr;
-    size_t c_sock_len;
-}my_address;
-
 typedef struct peer_t{
     struct sockaddr_in* peer_address;
     size_t sock_len;
+    uint32_t tail;
 }peer;
 
 struct consensus_component_t{
@@ -30,9 +26,11 @@ struct consensus_component_t{
     view_stamp committed;
 
     struct sockaddr_in my_address;
+    char *zoo_host_port;
     uint32_t group_size;
     peer* peer_pool;
 
+    int zfd; // The descriptor used to talk to zookeeper.
     
     FILE* con_log_file;
 
@@ -48,7 +46,7 @@ typedef struct consensus_component_t consensus_component;
 extern "C" {
 #endif
 
-	consensus_component* init_consensus_comp(const char* config_path, const char* log_path, node_id_t node_id, const char* start_mode);
+	void init_consensus_comp(consensus_component* consensus_comp, const char* config_path, const char* log_path, node_id_t node_id);
 	int rsm_op(consensus_component* comp, void* data, size_t data_size);
 	void *handle_accept_req(void* arg);
 

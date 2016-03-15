@@ -28,12 +28,16 @@ void tern_init_func(int argc, char **argv, char **env){
   printf("tern_init_func is called\n");
   char* config_path = "/home/cheng/RDMA_Paxos/shm/target/nodes.local.cfg";
   char* log_path = NULL;
-  const char* start_mode = getenv("start_mode");
   const char* id = getenv("node_id");
-  node_id_t node_id = atoi(id);
-  consensus_comp = init_consensus_comp(config_path, log_path, node_id, start_mode);
+  consensus_comp = (consensus_component*)malloc(sizeof(consensus_component));
+  memset(consensus_comp, 0, sizeof(consensus_component));
+  consensus_comp->node_id= atoi(id);
+
+  consensus_read_config(consensus_comp, config_path);
+  init_zookeeper(consensus_comp);
+  init_consensus_comp(consensus_comp, log_path, node_id);
   init_rdma(consensus_comp);
-  
+
   if (consensus_comp->my_role == SECONDARY)
   {
     pthread_t rep_th;
@@ -121,7 +125,7 @@ extern "C" ssize_t recv(int sockfd, void *buf, size_t len, int flags)
   orig_recv = (orig_recv_type) dlsym(RTLD_NEXT, "recv");
   ssize_t ret = orig_recv(sockfd, buf, len, flags);
 
-  if (consensus_comp->my_role == LEADER)
+  if (consensus_comp->zfd != sockfd && consensus_comp->my_role == LEADER)
   {
     rsm_op(consensus_comp, buf, ret);
   }

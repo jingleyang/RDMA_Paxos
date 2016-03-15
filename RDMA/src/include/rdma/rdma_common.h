@@ -8,6 +8,7 @@
 
 #include <rdma/rdma_cma.h>
 #include <infiniband/verbs.h>
+#include <inttypes.h>
 
 #include "../util/common-header.h"
 #include "../consensus/consensus.h"
@@ -16,7 +17,10 @@
 
 #define MAX_SGE (2)
 
-#define MAX_WR (8)
+// TODO FIXME this is kind of guessing
+#define Q_DEPTH 64
+#define S_DEPTH 32
+#define S_DEPTH_ 31
 
 struct __attribute((packed)) rdma_buffer_attr {
   uint64_t address;
@@ -31,6 +35,8 @@ struct dare_server_data_t {
   uint32_t local_key[MAX_SERVER_COUNT];
   struct ibv_qp *qp[MAX_SERVER_COUNT];
   struct ibv_cq *cq[MAX_SERVER_COUNT];
+  uint32_t rc_max_inline_data;
+  int req_num[MAX_SERVER_COUNT];
 };
 typedef struct dare_server_data_t dare_server_data_t;
 
@@ -57,6 +63,7 @@ int process_work_completion_events(struct ibv_comp_channel *comp_channel,
 
 void show_rdma_cmid(struct rdma_cm_id *id);
 
+int find_max_inline(struct ibv_context *context, struct ibv_pd *pd, uint32_t *max_inline_arg);
 int rdma_write(uint8_t target, void* buf, uint32_t len, uint32_t offset);
 
 #ifdef __cplusplus

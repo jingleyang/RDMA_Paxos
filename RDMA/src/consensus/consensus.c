@@ -15,30 +15,15 @@ typedef struct request_record_t{
 }__attribute__((packed))request_record;
 #define REQ_RECORD_SIZE(M) (sizeof(request_record)+(M->data_size))
 
-consensus_component* init_consensus_comp(const char* config_path, const char* log_path, node_id_t node_id, const char* start_mode){
-    consensus_component* comp = (consensus_component*)malloc(sizeof(consensus_component));
-    memset(comp, 0, sizeof(consensus_component));
+void init_consensus_comp(consensus_component* consensus_comp, const char* log_path, node_id_t node_id){
+        consensus_comp->cur_view.view_id = 1;
+        consensus_comp->cur_view.req_id = 0;
 
-    if(NULL != comp){
-        comp->node_id = node_id;
-        comp->cur_view.view_id = 1;
-        comp->cur_view.req_id = 0;
-        if(*start_mode == 's'){
-            comp->cur_view.leader_id = comp->node_id;
-        }else{
-            comp->cur_view.leader_id = 9999;
-        }
-        if(comp->cur_view.leader_id == comp->node_id){
-            comp->my_role = LEADER;
-        }else{
-            comp->my_role = SECONDARY;
-        }
-        comp->highest_seen_vs.view_id = 1;
-        comp->highest_seen_vs.req_id = 0;
-        comp->committed.view_id = 1; 
-        comp->committed.req_id = 0;
-        consensus_read_config(comp, config_path);
-        pthread_mutex_init(&comp->mutex, NULL);
+        consensus_comp->highest_seen_vs.view_id = 1;
+        consensus_comp->highest_seen_vs.req_id = 0;
+        consensus_comp->committed.view_id = 1; 
+        consensus_comp->committed.req_id = 0;
+        pthread_mutex_init(&consensus_comp->mutex, NULL);
 
         int build_log_ret = 0;
         if(log_path == NULL){
@@ -57,14 +42,12 @@ consensus_component* init_consensus_comp(const char* config_path, const char* lo
             char* con_log_path = (char*)malloc(sizeof(char)*strlen(log_path) + 50);
             memset(con_log_path, 0, sizeof(char)*strlen(log_path) + 50);
             if(NULL != con_log_path){
-                sprintf(con_log_path, "%s/node-%u-consensus.log", log_path, comp->node_id);
-                comp->con_log_file = fopen(con_log_path, "w");
+                sprintf(con_log_path, "%s/node-%u-consensus.log", log_path, consensus_comp->node_id);
+                consensus_comp->con_log_file = fopen(con_log_path, "w");
                 free(con_log_path);
             }
         }
-        comp->db_ptr = initialize_db(comp->db_name, 0);
-    }
-    return comp;
+        consensus_comp->db_ptr = initialize_db(consensus_comp->db_name, 0);
 }
 
 static view_stamp get_next_view_stamp(consensus_component* comp){
