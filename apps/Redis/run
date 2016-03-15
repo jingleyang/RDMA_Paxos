@@ -1,0 +1,13 @@
+#!/bin/bash
+
+
+#run the redis-master docker
+docker exec -ti redis-master /data/redis-run
+
+#run set transactions in redis
+#redis-benchmark -c 1 -n 20000 -d 10 -h 127.0.0.1 -p 6379 -t set > result.txt
+
+#copy result to Desktop
+docker cp redis-master:/data/result.txt  `pwd`
+
+

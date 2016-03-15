@@ -1,0 +1,25 @@
+#!/bin/bash
+
+apt-get update
+
+#install docker 
+if [ ! -n `which docker` ]; then
+    apt-get install docker.io
+else
+    echo "docker exists"
+fi
+
+#pull redis docker
+docker pull redis
+
+#run redis master with docker
+docker run -v `pwd`/redis-run:/data/redis-run --name redis-master -p 6379:6379 -d redis 
+
+#run two slaves with docker
+docker run --link redis-master:redis-master -v `pwd`/redis.conf:/usr/local/etc/redis/redis.conf --name redis-slave1 -d redis redis-server /usr/local/etc/redis/redis.conf
+
+docker run --link redis-master:redis-master --link redis-slave1:redis-slave1 -v `pwd`/redis.conf:/usr/local/etc/redis/redis.conf --name redis-slave2 -d redis redis-server /usr/local/etc/redis/redis.conf
+
+
+
+
