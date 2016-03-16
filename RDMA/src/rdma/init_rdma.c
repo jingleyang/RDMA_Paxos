@@ -1,8 +1,6 @@
 #include "../include/rdma/rdma_common.h"
 #include "../include/log/log.h"
 
-dare_server_data_t srv_data;
-
 static struct rdma_event_channel *cm_event_channel = NULL;
 static struct rdma_cm_id *cm_server_id = NULL, *cm_client_id = NULL;
 static struct ibv_pd *pd = NULL;
@@ -104,13 +102,23 @@ static int client_prepare_connection(struct sockaddr_in *s_addr)
 		rdma_error("Failed to request notifications, errno: %d\n", -errno);
 		return -errno;
 	}
+	ret = find_max_inline(cm_client_id->verbs, pd, &srv_data.rc_max_inline_data);
+    if (ret != 0)
+    {
+    	rdma_error("Cannot find max RC inline data, ret = %d \n", ret);
+    	return ret;
+    }
+    rdma_debug("MAX_INLINE_DATA = %"PRIu32"\n", srv_data.rc_max_inline_data);
 
+    /* The capacity here is define statically but this can be probed from the 
+     * device. We just use a small number as defined in rdma_common.h */
     bzero(&qp_init_attr, sizeof qp_init_attr);
     qp_init_attr.cap.max_recv_sge = MAX_SGE;
-    qp_init_attr.cap.max_recv_wr = MAX_WR;
+    qp_init_attr.cap.max_recv_wr = Q_DEPTH;
     qp_init_attr.cap.max_send_sge = MAX_SGE;
-    qp_init_attr.cap.max_send_wr = MAX_WR;
+    qp_init_attr.cap.max_send_wr = Q_DEPTH; /* Maximum send posting capacity */
     qp_init_attr.qp_type = IBV_QPT_RC;
+    qp_init_attr.cap.max_inline_data = srv_data.rc_max_inline_data;
 
     qp_init_attr.recv_cq = client_cq;
     qp_init_attr.send_cq = client_cq;
@@ -223,44 +231,6 @@ static int client_send_metadata_to_server()
 	return 0;
 }
 
-static int client_clean()
-{
-	int ret = -1;
-
-	/* Destroy QP */
-	rdma_destroy_qp(cm_client_id);
-	/* Destroy client cm id */
-	ret = rdma_destroy_id(cm_client_id);
-	if (ret) {
-		rdma_error("Failed to destroy client id cleanly, %d \n", -errno);
-		// we continue anyways;
-	}
-	/* Destroy CQ */
-	ret = ibv_destroy_cq(client_cq);
-	if (ret) {
-		rdma_error("Failed to destroy completion queue cleanly, %d \n", -errno);
-		// we continue anyways;
-	}
-	/* Destroy completion channel */
-	ret = ibv_destroy_comp_channel(io_completion_channel);
-	if (ret) {
-		rdma_error("Failed to destroy completion channel cleanly, %d \n", -errno);
-		// we continue anyways;
-	}
-	/* Destroy memory buffers */
-	rdma_buffer_deregister(server_metadata_mr);
-
-	/* Destroy protection domain */
-	ret = ibv_dealloc_pd(pd);
-	if (ret) {
-		rdma_error("Failed to destroy client protection domain cleanly, %d \n", -errno);
-		// we continue anyways;
-	}
-	rdma_destroy_event_channel(cm_event_channel);
-	printf("Client resource clean up is complete \n");
-	return 0;
-}
-
 static int setup_client_resources()
 {
 	int ret = -1;
@@ -297,12 +267,19 @@ static int setup_client_resources()
 		return -errno;
 	}
 
+    if (ret = find_max_inline(cm_client_id->verbs, pd, srv_data.rc_max_inline_data) != 0)
+    {
+    	rdma_error("Cannot find max RC inline data, ret = %d \n", ret);
+    	return ret;
+    }
+
 	bzero(&qp_init_attr, sizeof qp_init_attr);
 	qp_init_attr.cap.max_recv_sge = MAX_SGE;
-	qp_init_attr.cap.max_recv_wr = MAX_WR;
+	qp_init_attr.cap.max_recv_wr = Q_DEPTH;
 	qp_init_attr.cap.max_send_sge = MAX_SGE;
-	qp_init_attr.cap.max_send_wr = MAX_WR;
+	qp_init_attr.cap.max_send_wr = Q_DEPTH;
 	qp_init_attr.qp_type = IBV_QPT_RC;
+	qp_init_attr.cap.max_inline_data = srv_data.rc_max_inline_data;
 
 	qp_init_attr.recv_cq = cq;
 	qp_init_attr.send_cq = cq;
@@ -322,6 +299,11 @@ static int start_rdma_server()
 {
 	struct rdma_cm_event *cm_event = NULL;
 	int ret = -1;
+
+	/* now, we expect a client to connect and generate a RDMA_CM_EVNET_CONNECT_REQUEST 
+	 * We wait (block) on the connection management event channel for 
+	 * the connect event. 
+	 */
 	ret = process_rdma_cm_event(cm_event_channel, RDMA_CM_EVENT_CONNECT_REQUEST, &cm_event);
 	if (ret) {
 		rdma_error("Failed to get cm event, ret = %d \n" , ret);
@@ -447,10 +429,10 @@ static int send_server_metadata_to_client()
 int init_rdma(consensus_component* consensus_comp)
 {
 	int ret;
-	srv_data.tail = 0;
+
 	if (consensus_comp->my_role == LEADER)
 	{
-		struct sockaddr_in server_sockaddr = consensus_comp->my_address;
+		struct sockaddr_in server_sockaddr = consensus_comp->peer_pool[consensus_comp->node_id].peer_address;
 		struct sockaddr_in *server_addr = &server_sockaddr;
 		int ret = -1;
 
@@ -476,6 +458,12 @@ int init_rdma(consensus_component* consensus_comp)
 			return -errno;
 		}
 		rdma_debug("Server RDMA CM id is successfully binded \n");
+
+		/* Now we start to listen on the passed IP and port. However unlike
+		 * normal TCP listen, this is a non-blocking call. When a new client is 
+		 * connected, a new connection management (CM) event is generated on the 
+		 * RDMA CM event channel from where the listening id was created.
+		 */
 
 		ret = rdma_listen(cm_server_id, 8);
 		if (ret) {
@@ -516,42 +504,32 @@ int init_rdma(consensus_component* consensus_comp)
 		srv_data.log_mr = log_buffer_mr->addr;
 		return 0;
 	}else{
-		for (int i = 0; i < consensus_comp->group_size; ++i)
-		{
-			if (i == consensus_comp->node_id)
-				continue;
-			ret = client_prepare_connection(consensus_comp->peer_pool[i].peer_address);
-			if (ret) { 
-				rdma_error("Failed to setup client connection , ret = %d \n", ret);
-				return ret;
-			 }
-
-			ret = client_pre_post_recv_buffer(); 
-			if (ret) { 
-				rdma_error("Failed to setup client connection , ret = %d \n", ret);
-				return ret;
-			}
-			ret = client_connect_to_server();
-			if (ret > 0) { 
-				rdma_error("Failed to setup client connection , ret = %d \n", ret);
-				ret = client_clean();
-				if (ret) {
-					rdma_error("Failed to clean up resources \n");
-				}
-				continue;
-			}
-			ret = client_send_metadata_to_server();
-			if (ret) {
-				rdma_error("Failed to setup client connection , ret = %d \n", ret);
-				return ret;
-			}
-			consensus_comp->cur_view.leader_id = i;
-			srv_data.qp[consensus_comp->cur_view.leader_id] = client_qp;
-			srv_data.local_key[consensus_comp->cur_view.leader_id] = log_buffer_mr->lkey;
-			srv_data.metadata_attr[consensus_comp->cur_view.leader_id] = server_metadata_attr;
-			srv_data.cq[consensus_comp->cur_view.leader_id] = client_cq;
-			srv_data.log_mr = log_buffer_mr->addr;
+		ret = client_prepare_connection(consensus_comp->peer_pool[consensus_comp->cur_view.leader_id].peer_address);
+		if (ret) { 
+			rdma_error("Failed to setup client connection , ret = %d \n", ret);
 			return ret;
 		}
+
+		ret = client_pre_post_recv_buffer(); 
+		if (ret) { 
+			rdma_error("Failed to setup client connection , ret = %d \n", ret);
+			return ret;
+		}
+		ret = client_connect_to_server();
+		if (ret > 0) { 
+			rdma_error("Failed to setup client connection , ret = %d \n", ret);
+			return ret;
+		}
+		ret = client_send_metadata_to_server();
+		if (ret) {
+			rdma_error("Failed to setup client connection , ret = %d \n", ret);
+			return ret;
+		}
+		srv_data.qp[consensus_comp->cur_view.leader_id] = client_qp;
+		srv_data.local_key[consensus_comp->cur_view.leader_id] = log_buffer_mr->lkey;
+		srv_data.metadata_attr[consensus_comp->cur_view.leader_id] = server_metadata_attr;
+		srv_data.cq[consensus_comp->cur_view.leader_id] = client_cq;
+		srv_data.log_mr = log_buffer_mr->addr;
+		return ret;
 	}
 }

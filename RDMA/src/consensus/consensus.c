@@ -15,30 +15,15 @@ typedef struct request_record_t{
 }__attribute__((packed))request_record;
 #define REQ_RECORD_SIZE(M) (sizeof(request_record)+(M->data_size))
 
-consensus_component* init_consensus_comp(const char* config_path, const char* log_path, node_id_t node_id, const char* start_mode){
-    consensus_component* comp = (consensus_component*)malloc(sizeof(consensus_component));
-    memset(comp, 0, sizeof(consensus_component));
+void init_consensus_comp(consensus_component* consensus_comp, const char* log_path, node_id_t node_id){
+        consensus_comp->cur_view.view_id = 1;
+        consensus_comp->cur_view.req_id = 0;
 
-    if(NULL != comp){
-        comp->node_id = node_id;
-        comp->cur_view.view_id = 1;
-        comp->cur_view.req_id = 0;
-        if(*start_mode == 's'){
-            comp->cur_view.leader_id = comp->node_id;
-        }else{
-            comp->cur_view.leader_id = 9999;
-        }
-        if(comp->cur_view.leader_id == comp->node_id){
-            comp->my_role = LEADER;
-        }else{
-            comp->my_role = SECONDARY;
-        }
-        comp->highest_seen_vs.view_id = 1;
-        comp->highest_seen_vs.req_id = 0;
-        comp->committed.view_id = 1; 
-        comp->committed.req_id = 0;
-        consensus_read_config(comp, config_path);
-        pthread_mutex_init(&comp->mutex, NULL);
+        consensus_comp->highest_seen_vs.view_id = 1;
+        consensus_comp->highest_seen_vs.req_id = 0;
+        consensus_comp->committed.view_id = 1; 
+        consensus_comp->committed.req_id = 0;
+        pthread_mutex_init(&consensus_comp->mutex, NULL);
 
         int build_log_ret = 0;
         if(log_path == NULL){
@@ -57,14 +42,12 @@ consensus_component* init_consensus_comp(const char* config_path, const char* lo
             char* con_log_path = (char*)malloc(sizeof(char)*strlen(log_path) + 50);
             memset(con_log_path, 0, sizeof(char)*strlen(log_path) + 50);
             if(NULL != con_log_path){
-                sprintf(con_log_path, "%s/node-%u-consensus.log", log_path, comp->node_id);
-                comp->con_log_file = fopen(con_log_path, "w");
+                sprintf(con_log_path, "%s/node-%u-consensus.log", log_path, consensus_comp->node_id);
+                consensus_comp->con_log_file = fopen(con_log_path, "w");
                 free(con_log_path);
             }
         }
-        comp->db_ptr = initialize_db(comp->db_name, 0);
-    }
-    return comp;
+        consensus_comp->db_ptr = initialize_db(consensus_comp->db_name, 0);
 }
 
 static view_stamp get_next_view_stamp(consensus_component* comp){
@@ -111,32 +94,27 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     uint64_t offset = srv_data.tail;
     log_entry* new_entry = log_append_entry(comp, data_size, data, &next, srv_data.log_mr, srv_data.tail);
     srv_data.tail = srv_data.tail + log_entry_len(new_entry);
+
+    for (int i = 0; i < comp->group_size; i++) {
+        if (i == comp->node_id)
+            continue;
+        rdma_write(i, new_entry, log_entry_len(new_entry), offset);
+    }
     pthread_mutex_unlock(&comp->mutex);
-
-    if(comp->group_size > 1){
-        for (int i = 0; i < comp->group_size; i++) {
-            if (i == comp->node_id)
-                continue;
-            rdma_write(i, new_entry, log_entry_len(new_entry), offset);
-        }
-
+    
 recheck:
-        for (int i = 0; i < MAX_SERVER_COUNT; i++)
+    for (int i = 0; i < MAX_SERVER_COUNT; i++) {
+        if (new_entry->ack[i].msg_vs.view_id == next.view_id && new_entry->ack[i].msg_vs.req_id == next.req_id)
         {
-            if (new_entry->ack[i].msg_vs.view_id == next.view_id && new_entry->ack[i].msg_vs.req_id == next.req_id)
-            {
-                update_record(record_data, new_entry->ack[i].node_id);
-                store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data);
-            }
+            update_record(record_data, new_entry->ack[i].node_id);
+            store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data);
         }
-        if (reached_quorum(record_data, comp->group_size))
-        {
-            goto handle_submit_req_exit;
-        }else{
-            goto recheck;
-        }
+    }
+    if (reached_quorum(record_data, comp->group_size))
+    {
+        goto handle_submit_req_exit;
     }else{
-        CON_LOG(comp, "group_size <= 1, execute by myself.\n");
+        goto recheck;
     }
 handle_submit_req_exit: 
     if(record_data != NULL){

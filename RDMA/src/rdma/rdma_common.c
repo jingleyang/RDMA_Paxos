@@ -182,6 +182,70 @@ int get_addr(char *dst, struct sockaddr *addr)
 	return ret;
 }
 
+/** 
+ * source: OpenMPI source
+ */
+int find_max_inline(struct ibv_context *context, struct ibv_pd *pd, uint32_t *max_inline_arg)
+{
+    int rc;
+    struct ibv_qp *qp = NULL;
+    struct ibv_cq *cq = NULL;
+    struct ibv_qp_init_attr init_attr;
+    uint32_t max_inline_data;
+    
+    *max_inline_arg = 0;
+
+    cq = ibv_create_cq(context, 1, NULL, NULL, 0);
+    if (NULL == cq) {
+        return 1;
+    }
+    
+    memset(&init_attr, 0, sizeof(init_attr));
+    init_attr.qp_type = IBV_QPT_RC;
+    init_attr.send_cq = cq;
+    init_attr.recv_cq = cq;
+    init_attr.srq = 0;
+    init_attr.cap.max_send_sge = 1;
+    init_attr.cap.max_recv_sge = 1;
+    init_attr.cap.max_recv_wr = 1;
+    
+    init_attr.cap.max_inline_data = max_inline_data = 1 << 20;
+    rc = 1;
+    while (max_inline_data > 0) {
+        qp = ibv_create_qp(pd, &init_attr);
+        if (NULL != qp) {
+            *max_inline_arg = max_inline_data;
+            ibv_destroy_qp(qp);
+            rc = 0;
+            break;
+        }
+        max_inline_data >>= 1;
+        init_attr.cap.max_inline_data = max_inline_data;
+    }
+    
+    if (NULL != cq) {
+        ibv_destroy_cq(cq);
+    }
+
+    return rc;
+}
+
+
+void poll_cq(int num_completions, struct ibv_cq *cq)
+{
+	struct ibv_wc wc[Q_DEPTH];
+	int comps= 0;
+	while(comps < num_completions) {
+		int new_comps = ibv_poll_cq(cq, num_completions - comps, wc);
+		if(new_comps != 0) {
+			comps += new_comps;
+			if(wc[0].status != 0) {
+				fprintf(stderr, "Bad wc status %d\n", wc[0].status);
+			}
+		}
+	}
+}
+
 int rdma_write(uint8_t target, void* buf, uint32_t len, uint32_t offset)
 {
 	int rc;
@@ -199,7 +263,19 @@ int rdma_write(uint8_t target, void* buf, uint32_t len, uint32_t offset)
     wr.sg_list    = &sg;
     wr.num_sge    = 1;
     wr.opcode     = IBV_WR_RDMA_WRITE;
-    wr.send_flags = IBV_SEND_SIGNALED; /* Specifying IBV_SEND_SIGNALED in wr.send_flags indicates that we want completion notification for this send request */
+
+    if((srv_data.req_num[target] & S_DEPTH_) == 0) {
+    	wr.send_flags = IBV_SEND_SIGNALED; /* Specifying IBV_SEND_SIGNALED in wr.send_flags indicates that we want completion notification for this send request */
+    } else {
+    	wr.send_flags = 0;
+    }
+    if ((req_num[target] & S_DEPTH_) == S_DEPTH_)
+    {
+    	poll_cq(1, srv_data.cq[target]);
+    }
+
+    if (len <= srv_data.rc_max_inline_data)
+    	wr.send_flags |= IBV_SEND_INLINE;
     wr.wr.rdma.remote_addr = srv_data.metadata_attr[target].address + offset;
     wr.wr.rdma.rkey        = srv_data.metadata_attr[target].buf_rkey;
 	rc = ibv_post_send(srv_data.qp[target], &wr, &bad_wr);
@@ -207,20 +283,7 @@ int rdma_write(uint8_t target, void* buf, uint32_t len, uint32_t offset)
         rdma_error("ibv_post_send failed because %s [%s]\n", strerror(rc), rc == EINVAL ? "EINVAL" : rc == ENOMEM ? "ENOMEM" : rc == EFAULT ? "EFAULT" : "UNKNOWN");
     }
 
-    //TODO: avoid QP overflow
-    
-    struct ibv_wc wc;
-    int poll_result;
-
-    do
-    {
-    	poll_result = ibv_poll_cq(srv_data.cq[target], 1, &wc);
-    }while(poll_result == 0);
-    if (wc.status != IBV_WC_SUCCESS)
-	{
-		rdma_error("Work completion (WC) has error status: %d (means: %s)\n", -wc.status, ibv_wc_status_str(wc.status));
-		//TODO
-	}
+    srv_data.req_num[target]++; // TODO: multithreading, we need a lock for this
 
     return 0;
 }
