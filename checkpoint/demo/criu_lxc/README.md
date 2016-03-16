@@ -31,7 +31,7 @@ The file out/lib/libnl-3.so.200 and out/lib/libprotobuf-c.so.0 can be copied int
 ### LXC
 The default lxc for ubuntu is too old to use. We need a daily lxc. The script checkpoint/demo/criu_lxc/prepare/lxc/install_lxc.sh will install a daily lxc.
 
-The file checkpoint/demo/criu_lxc/prepare/lxc/create_container.sh will create a container named u1. The config file in /var/lib/lxc/u1/config should be modified, because in this project criu need very high privilege to dump the information of a process. I think some configuration should be highlighted, such as lxc.include should be commented, because it contains lxc.seccomp, which will block some syscalls, and lxc.mount.auto should appy sys:rw permissions.
+The file checkpoint/demo/criu_lxc/prepare/lxc/create_container.sh will create a container named u1. The config file in /var/lib/lxc/u1/config should be modified, because in this project criu need very high privilege to dump the information of a process. I think some configuration should be highlighted, such as lxc.include should be commented, because it contains lxc.seccomp, which will block some syscalls, and lxc.mount.auto should be assigned sys:rw permissions.
 
 The following commands will be useful.
 ```
