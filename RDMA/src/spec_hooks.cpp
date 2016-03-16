@@ -6,6 +6,7 @@
 #include "include/consensus/consensus.h"
 #include "include/util/debug.h"
 #include "include/rdma/rdma_common.h"
+#include "include/zookeeper/zoo.h"
 
 #define dprintf(fmt...)
 
