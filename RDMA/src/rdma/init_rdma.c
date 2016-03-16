@@ -1,8 +1,6 @@
 #include "../include/rdma/rdma_common.h"
 #include "../include/log/log.h"
 
-dare_server_data_t srv_data;
-
 static struct rdma_event_channel *cm_event_channel = NULL;
 static struct rdma_cm_id *cm_server_id = NULL, *cm_client_id = NULL;
 static struct ibv_pd *pd = NULL;
@@ -120,7 +118,7 @@ static int client_prepare_connection(struct sockaddr_in *s_addr)
     qp_init_attr.cap.max_send_sge = MAX_SGE;
     qp_init_attr.cap.max_send_wr = Q_DEPTH; /* Maximum send posting capacity */
     qp_init_attr.qp_type = IBV_QPT_RC;
-    qp_init_attr.cap.max_inline_data = srv_data->rc_max_inline_data;
+    qp_init_attr.cap.max_inline_data = srv_data.rc_max_inline_data;
 
     qp_init_attr.recv_cq = client_cq;
     qp_init_attr.send_cq = client_cq;
@@ -269,7 +267,7 @@ static int setup_client_resources()
 		return -errno;
 	}
 
-    if (ret = find_max_inline(cm_client_id->verbs, pd, srv_data->rc_max_inline_data) != 0)
+    if (ret = find_max_inline(cm_client_id->verbs, pd, srv_data.rc_max_inline_data) != 0)
     {
     	rdma_error("Cannot find max RC inline data, ret = %d \n", ret);
     	return ret;
@@ -281,7 +279,7 @@ static int setup_client_resources()
 	qp_init_attr.cap.max_send_sge = MAX_SGE;
 	qp_init_attr.cap.max_send_wr = Q_DEPTH;
 	qp_init_attr.qp_type = IBV_QPT_RC;
-	qp_init_attr.cap.max_inline_data = srv_data->rc_max_inline_data;
+	qp_init_attr.cap.max_inline_data = srv_data.rc_max_inline_data;
 
 	qp_init_attr.recv_cq = cq;
 	qp_init_attr.send_cq = cq;
@@ -431,7 +429,6 @@ static int send_server_metadata_to_client()
 int init_rdma(consensus_component* consensus_comp)
 {
 	int ret;
-	srv_data.tail = 0;
 
 	if (consensus_comp->my_role == LEADER)
 	{
@@ -531,7 +528,7 @@ int init_rdma(consensus_component* consensus_comp)
 		srv_data.qp[consensus_comp->cur_view.leader_id] = client_qp;
 		srv_data.local_key[consensus_comp->cur_view.leader_id] = log_buffer_mr->lkey;
 		srv_data.metadata_attr[consensus_comp->cur_view.leader_id] = server_metadata_attr;
-		srv_data.cq[consensus_comp->cur_view.leader_id] = client_cq;\
+		srv_data.cq[consensus_comp->cur_view.leader_id] = client_cq;
 		srv_data.log_mr = log_buffer_mr->addr;
 		return ret;
 	}

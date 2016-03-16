@@ -15,16 +15,7 @@ RM := rm -rf
 -include src/shm/subdir.mk
 -include src/config-comp/subdir.mk
 -include src/subdir.mk
--include subdir.mk
 -include objects.mk
-
-ifneq ($(MAKECMDGOALS),clean)
-ifneq ($(strip $(C_DEPS)),)
--include $(C_DEPS)
-endif
-endif
-
--include ../makefile.defs
 
 # Add inputs and outputs from these tool invocations to the build variables 
 
@@ -32,16 +23,16 @@ endif
 all: interpose.so
 
 # Tool invocations
-interpose.so: $(OBJS) $(USER_OBJS)
+interpose.so: $(OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: GCC C Linker'
-	gcc-4.8  -shared -Wl,-soname,interpose.so $(OBJS) $(USER_OBJS) -Wall -pg -o interpose.so -ldl  -L"$(ROOT_DIR)/../.local/lib" $(LIBS)
+	gcc-4.8  -shared -Wl,-soname,interpose.so $(OBJS) -Wall -o interpose.so -L"$(ROOT_DIR)/../.local/lib" $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) interpose.so
+	-$(RM) $(OBJS)$(C_DEPS) interpose.so
 	-@echo ' '
 
 .PHONY: all clean dependents

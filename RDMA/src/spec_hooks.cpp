@@ -34,8 +34,8 @@ void tern_init_func(int argc, char **argv, char **env){
   consensus_comp->node_id= atoi(id);
 
   consensus_read_config(consensus_comp, config_path);
-  init_zookeeper(consensus_comp);
   init_consensus_comp(consensus_comp, log_path, node_id);
+  init_zookeeper(consensus_comp);
   init_rdma(consensus_comp);
 
   if (consensus_comp->my_role == SECONDARY)

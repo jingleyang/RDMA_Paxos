@@ -1,4 +1,7 @@
 #include "../include/zookeeper/zoo.h"
+#include "../include/rdma/rdma_common.h"
+
+dare_server_data_t srv_data;
 
 static int is_connected;
 
@@ -74,7 +77,7 @@ static int check_leader(consensus_component* consensus_comp)
 		free(zoo_data);
 	}
 	uint32_t max_tail;
-	for (int i = 0; i < children_list->count; ++i)
+	for (int i = 0; i < children_list->count - 1; i++)
 	{
 		if (consensus_comp->peer_pool[temp_node_id[i]].tail > consensus_comp->peer_pool[temp_node_id[i + 1]].tail) {	
 			max_tail = consensus_comp->peer_pool[temp_node_id[i]].tail;
@@ -84,9 +87,10 @@ static int check_leader(consensus_component* consensus_comp)
 	}
 
 	node_id_t leader_id;
+	int flag;
 	for (leader_id = 0; leader_id < consensus_comp->group_size; leader_id++)
 	{
-		int flag = 0;
+		flag = 0;
 		for (int i = 0; i < children_list->count; ++i)
 		{
 			if (leader_id == temp_node_id[i])
@@ -145,6 +149,7 @@ void zoo_wget_children_watcher(zhandle_t *wzh, int type, int state, const char *
 
 int init_zookeeper(consensus_component* consensus_comp)
 {
+	srv_data.tail = 0;
 	int rc;
 	char path_buffer[512];
 	zh = zookeeper_init(consensus_comp->zoo_host_port, zookeeper_init_watcher, 15000, 0, 0, 0);

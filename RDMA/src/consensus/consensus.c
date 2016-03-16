@@ -94,32 +94,27 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     uint64_t offset = srv_data.tail;
     log_entry* new_entry = log_append_entry(comp, data_size, data, &next, srv_data.log_mr, srv_data.tail);
     srv_data.tail = srv_data.tail + log_entry_len(new_entry);
+
+    for (int i = 0; i < comp->group_size; i++) {
+        if (i == comp->node_id)
+            continue;
+        rdma_write(i, new_entry, log_entry_len(new_entry), offset);
+    }
     pthread_mutex_unlock(&comp->mutex);
-
-    if(comp->group_size > 1){
-        for (int i = 0; i < comp->group_size; i++) {
-            if (i == comp->node_id)
-                continue;
-            rdma_write(i, new_entry, log_entry_len(new_entry), offset);
-        }
-
+    
 recheck:
-        for (int i = 0; i < MAX_SERVER_COUNT; i++)
+    for (int i = 0; i < MAX_SERVER_COUNT; i++) {
+        if (new_entry->ack[i].msg_vs.view_id == next.view_id && new_entry->ack[i].msg_vs.req_id == next.req_id)
         {
-            if (new_entry->ack[i].msg_vs.view_id == next.view_id && new_entry->ack[i].msg_vs.req_id == next.req_id)
-            {
-                update_record(record_data, new_entry->ack[i].node_id);
-                store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data);
-            }
+            update_record(record_data, new_entry->ack[i].node_id);
+            store_record(comp->db_ptr, sizeof(record_no), &record_no, REQ_RECORD_SIZE(record_data), record_data);
         }
-        if (reached_quorum(record_data, comp->group_size))
-        {
-            goto handle_submit_req_exit;
-        }else{
-            goto recheck;
-        }
+    }
+    if (reached_quorum(record_data, comp->group_size))
+    {
+        goto handle_submit_req_exit;
     }else{
-        CON_LOG(comp, "group_size <= 1, execute by myself.\n");
+        goto recheck;
     }
 handle_submit_req_exit: 
     if(record_data != NULL){
