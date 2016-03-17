@@ -17,8 +17,8 @@ Steps:
 
 void report_hashCommand(client *c){
     //serverLog(LL_DEBUG,"[report_hash] argc=%d, argv[0]=%s, argv[1]=%s, argv[2]=%s",c->argc,(char*)c->argv[0]->ptr, (char*)c->argv[1]->ptr,(char*)c->argv[2]->ptr);
-    uint64_t index = strtoll((char*)c->argv[1]->ptr,NULL,10);
-    uint64_t hashval = strtoll((char*)c->argv[2]->ptr,NULL,10);
+    uint64_t index = strtoull((char*)c->argv[1]->ptr,NULL,10);
+    uint64_t hashval = strtoull((char*)c->argv[2]->ptr,NULL,10);
     serverLog(LL_DEBUG,"[report_hash] recvied index:%"PRIu64", hashval:0x%"PRIx64,index,hashval);
     Singleton_OutputHash* handle = get_OutputHash_instance(); 
     const int BUFF_SIZE=512;
