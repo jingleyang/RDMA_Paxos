@@ -1,0 +1,4 @@
+info file
+break write_hooked
+set args redis.conf 
+

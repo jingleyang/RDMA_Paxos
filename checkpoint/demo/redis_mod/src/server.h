@@ -63,6 +63,9 @@ typedef long long mstime_t; /* millisecond time type. */
 #include "latency.h" /* Latency monitor API */
 #include "sparkline.h" /* ASCII graphs API */
 #include "quicklist.h"
+// #jingle#hello_cmd#add
+
+#include "hello_cmd.h"
 
 /* Following includes allow test functions to be called from Redis main() */
 #include "zipmap.h"
@@ -1669,6 +1672,13 @@ void pfcountCommand(client *c);
 void pfmergeCommand(client *c);
 void pfdebugCommand(client *c);
 void latencyCommand(client *c);
+
+// #jingle#hello_cmd#add
+void helloCommand(client *c);
+void worldCommand(client *c);
+void diversityCommand(client *c);
+void report_hashCommand(client *c);
+// end
 
 #if defined(__GNUC__)
 void *calloc(size_t count, size_t size) __attribute__ ((deprecated));

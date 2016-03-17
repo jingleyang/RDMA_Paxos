@@ -294,7 +294,12 @@ struct redisCommand redisCommandTable[] = {
     {"pfcount",pfcountCommand,-2,"r",0,NULL,1,-1,1,0,0},
     {"pfmerge",pfmergeCommand,-2,"wm",0,NULL,1,-1,1,0,0},
     {"pfdebug",pfdebugCommand,-3,"w",0,NULL,0,0,0,0,0},
-    {"latency",latencyCommand,-2,"arslt",0,NULL,0,0,0,0,0}
+    {"latency",latencyCommand,-2,"arslt",0,NULL,0,0,0,0,0},
+// #jingle#hello_cmd#add
+    {"hello",helloCommand,2,"r",0,NULL,1,1,1,0,0},
+    {"__WORLD__",worldCommand,2,"r",0,NULL,1,1,1,0,0},
+    {"diversity",diversityCommand,1,"r",0,NULL,1,1,1,0,0},
+    {"report_hash",report_hashCommand,3,"r",0,NULL,1,1,1,0,0}
 };
 
 struct evictionPoolEntry *evictionPoolAlloc(void);

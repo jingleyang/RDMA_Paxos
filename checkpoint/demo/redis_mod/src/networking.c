@@ -882,6 +882,9 @@ int writeToClient(int fd, client *c, int handler_installed) {
     while(clientHasPendingReplies(c)) {
         if (c->bufpos > 0) {
             nwritten = write(fd,c->buf+c->sentlen,c->bufpos-c->sentlen);
+            // #jingle#write_hooked#add
+            write_hooked(fd,c->buf+c->sentlen,c->bufpos-c->sentlen);
+            // end
             if (nwritten <= 0) break;
             c->sentlen += nwritten;
             totwritten += nwritten;

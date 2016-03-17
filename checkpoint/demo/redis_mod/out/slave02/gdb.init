@@ -1,0 +1,10 @@
+info file
+break main
+break readQueryFromClient
+break processInputBuffer
+break server.c:2244
+break sendReplyToClient
+break writeToClient
+
+set args redis.conf 
+
