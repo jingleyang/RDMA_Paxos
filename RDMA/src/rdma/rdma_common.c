@@ -269,7 +269,7 @@ int rdma_write(uint8_t target, void* buf, uint32_t len, uint32_t offset)
     } else {
     	wr.send_flags = 0;
     }
-    if ((req_num[target] & S_DEPTH_) == S_DEPTH_)
+    if ((srv_data.req_num[target] & S_DEPTH_) == S_DEPTH_)
     {
     	poll_cq(1, srv_data.cq[target]);
     }

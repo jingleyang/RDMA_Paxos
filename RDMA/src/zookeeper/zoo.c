@@ -1,8 +1,10 @@
 #include "../include/zookeeper/zoo.h"
 #include "../include/rdma/rdma_common.h"
+#include <zookeeper.h>
 
 dare_server_data_t srv_data;
 
+static zhandle_t *zh;
 static int is_connected;
 
 #define ZDATALEN 1024 * 1024
@@ -29,8 +31,6 @@ void zookeeper_init_watcher(zhandle_t *izh, int type, int state, const char *pat
 		if (state == ZOO_CONNECTED_STATE)
 		{
 			is_connected = 1;
-		} else if (state == ZOO_NOTCONNECTED_STATE) {
-			is_connected = 0;
 		} else if (state == ZOO_EXPIRED_SESSION_STATE) {
 			is_connected = 0;
 			zookeeper_close(izh);
@@ -122,15 +122,6 @@ static int check_leader(consensus_component* consensus_comp)
 	return 0;
 }
 
-static int isvalueinarray(int val, int *arr, int size){
-    int i;
-    for (i=0; i < size; i++) {
-        if (arr[i] == val)
-            return true;
-    }
-    return 0;
-}
-
 void zoo_wget_children_watcher(zhandle_t *wzh, int type, int state, const char *path, void *watcherCtx) {
 	if (type == ZOO_CHILD_EVENT)
 	{
@@ -155,7 +146,10 @@ int init_zookeeper(consensus_component* consensus_comp)
 	zh = zookeeper_init(consensus_comp->zoo_host_port, zookeeper_init_watcher, 15000, 0, 0, 0);
 
 	while(is_connected != 1);
-	consensus_comp->zfd = zh->fd;
+	int interest, fd;
+	struct timeval tv;
+	zookeeper_interest(zh, &fd, &interest, &tv);
+	consensus_comp->zfd = fd;
 
 	rc = zoo_create(zh, "/election/guid-n_", NULL, 0, &ZOO_OPEN_ACL_UNSAFE, ZOO_SEQUENCE|ZOO_EPHEMERAL, path_buffer, 512);
 	if (rc)

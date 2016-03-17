@@ -4,6 +4,14 @@
 #include "../consensus/consensus.h"
 #include <libconfig.h>
 
-int consensus_read_config(struct consensus_component_t* comp,const char* config_file);
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+	int consensus_read_config(struct consensus_component_t* comp,const char* config_file);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

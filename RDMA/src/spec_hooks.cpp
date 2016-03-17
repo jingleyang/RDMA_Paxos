@@ -7,6 +7,7 @@
 #include "include/util/debug.h"
 #include "include/rdma/rdma_common.h"
 #include "include/zookeeper/zoo.h"
+#include "include/config-comp/config-comp.h"
 
 #define dprintf(fmt...)
 
@@ -32,10 +33,10 @@ void tern_init_func(int argc, char **argv, char **env){
   const char* id = getenv("node_id");
   consensus_comp = (consensus_component*)malloc(sizeof(consensus_component));
   memset(consensus_comp, 0, sizeof(consensus_component));
-  consensus_comp->node_id= atoi(id);
+  consensus_comp->node_id = atoi(id);
 
   consensus_read_config(consensus_comp, config_path);
-  init_consensus_comp(consensus_comp, log_path, node_id);
+  init_consensus_comp(consensus_comp, log_path, consensus_comp->node_id);
   init_zookeeper(consensus_comp);
   init_rdma(consensus_comp);
 

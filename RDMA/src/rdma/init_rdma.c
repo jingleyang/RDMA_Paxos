@@ -267,7 +267,8 @@ static int setup_client_resources()
 		return -errno;
 	}
 
-    if (ret = find_max_inline(cm_client_id->verbs, pd, srv_data.rc_max_inline_data) != 0)
+	ret = find_max_inline(cm_client_id->verbs, pd, &srv_data.rc_max_inline_data);
+    if (ret != 0)
     {
     	rdma_error("Cannot find max RC inline data, ret = %d \n", ret);
     	return ret;
@@ -432,8 +433,7 @@ int init_rdma(consensus_component* consensus_comp)
 
 	if (consensus_comp->my_role == LEADER)
 	{
-		struct sockaddr_in server_sockaddr = consensus_comp->peer_pool[consensus_comp->node_id].peer_address;
-		struct sockaddr_in *server_addr = &server_sockaddr;
+		struct sockaddr_in *server_addr = consensus_comp->peer_pool[consensus_comp->node_id].peer_address;
 		int ret = -1;
 
 		log_buffer = calloc(1, LOG_SIZE);

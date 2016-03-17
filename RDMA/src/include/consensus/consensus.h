@@ -31,6 +31,7 @@ struct consensus_component_t{
     peer* peer_pool;
 
     int zfd; // The descriptor used to talk to zookeeper.
+    char *znode_name;
     
     FILE* con_log_file;
 
@@ -46,7 +47,7 @@ typedef struct consensus_component_t consensus_component;
 extern "C" {
 #endif
 
-	void init_consensus_comp(consensus_component* consensus_comp, const char* config_path, const char* log_path, node_id_t node_id);
+	void init_consensus_comp(consensus_component* consensus_comp, const char* log_path, node_id_t node_id);
 	int rsm_op(consensus_component* comp, void* data, size_t data_size);
 	void *handle_accept_req(void* arg);
 

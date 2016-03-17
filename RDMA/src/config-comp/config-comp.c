@@ -87,7 +87,7 @@ int consensus_read_config(struct consensus_component_t* comp, const char* config
     if(comp->db_name==NULL){
         goto goto_config_error;
     }
-    if(NULL==strncpy(cur_node->db_name,db_name,db_name_len)){
+    if(NULL==strncpy(comp->db_name,db_name,db_name_len)){
         free(comp->db_name);
         goto goto_config_error;
     }
