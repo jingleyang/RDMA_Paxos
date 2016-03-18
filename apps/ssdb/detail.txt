@@ -1,0 +1,55 @@
+========== set ==========
+
+qps: 12681, time: 0.789 s
+
+one request time(us):  78.8581342165   78.9
+========== get ==========
+
+qps: 15069, time: 0.664 s
+
+one request time(us):  66.3614042073   66.4
+========== del ==========
+
+qps: 9845, time: 1.016 s
+
+one request time(us):  101.57440325   101.6
+========== hset ==========
+
+qps: 7815, time: 1.280 s
+
+one request time(us):  127.959053103   128.0
+========== hget ==========
+
+qps: 13640, time: 0.733 s
+
+one request time(us):  73.3137829912   73.3
+========== hdel ==========
+
+qps: 11708, time: 0.854 s
+
+one request time(us):  85.4116843184   85.4
+========== zset ==========
+
+qps: 10123, time: 0.988 s
+
+one request time(us):  98.7849451744   98.8
+========== zget ==========
+
+qps: 14267, time: 0.701 s
+
+one request time(us):  70.0918202846   70.1
+========== zdel ==========
+
+qps: 10562, time: 0.947 s
+
+one request time(us):  94.679038061   94.7
+========== qpush ==========
+
+qps: 10479, time: 0.954 s
+
+one request time(us):  95.4289531444   95.4
+========== qpop ==========
+
+qps: 11068, time: 0.903 s
+
+one request time(us):  90.3505601735   90.3
