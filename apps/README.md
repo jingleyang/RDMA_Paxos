@@ -1,70 +1,35 @@
 # How to add a testing task
 
 ## Introduction
+This folder contains several famous Linux server applications testing tasks, such as Redis, Zookeepers and memcached. Our project is aiming to provide a high availability solution for these applications through state machine replication. Two direct objectives for these testing tasks are:
+
+1) To obtain the real performance statistic when the application is running. 
+
+2) To test the performance overhead when our solution is working. 
+
+In the first stage, we are aiming to get performance statistic though running standard testing benchmark.
+
+In order to do testing effectively and efficiently, I did SSDB test, and have written some shell scripts for installation, running, testing and result analysis. The following sections will introduce each part of a testing job.
+
+## Installation
+A script named build.sh should be implemented to download source code and compile, then install the binary to a location.
+
+## Running and Stopping
+Script named run_server.sh and stop_server.sh should be implemented to run and stop server.
+
+## Testing
+A script named test.sh should be implemented to run the standard testing benchmark. A file named result.txt will be the output of testing.
+
+## Analysing
+Because the testing outputs are not standardised, we can write some analysis tools to show the result more clearly. For example, the result of SSDB shows query per second (QPS), but dose not show how much time one request is used. A analyse.sh can be implemented to do more research. A file named detail.txt will be the detailed result.
+
+## Result
+
+Once the testing task is finished, please write a brief document named README.md to describe the testing task, including the result. For example, in order to verify the result, we can cite other testing result from different sources.
 
 ## Testing Environment
+I did some preliminary testing for the performance of testing machine(project server), such as CPU, Memory and Disk. If the testing environment has been changed, Please redo the environment test. Please run Machine/machine.sh.
 
-CPU:
-```
-processor   : 11
-vendor_id   : GenuineIntel
-cpu family  : 6
-model       : 62
-model name  : Intel(R) Xeon(R) CPU E5-2420 v2 @ 2.20GHz
-stepping    : 4
-microcode   : 0x428
-cpu MHz     : 2500.007
-cache size  : 15360 KB
-physical id : 0
-siblings    : 12
-core id     : 5
-cpu cores   : 6
-apicid      : 11
-initial apicid  : 11
+## Conclusion
 
-```
-
-Memory:
-```
-admin@hemingserver1:~/RDMA_Paxos/apps$ cat /proc/meminfo 
-MemTotal:       32896520 kB
-MemFree:        21244800 kB
-MemAvailable:   30374680 kB
-
-```
-
-Linux:
-```
-admin@hemingserver1:~/RDMA_Paxos/apps$ uname -a
-Linux hemingserver1 3.19.0-25-generic #26~14.04.1-Ubuntu SMP Fri Jul 24 21:16:20 UTC 2015 x86_64 x86_64 x86_64 GNU/Linux
-
-```
-
-Disk:
-```
-=== START OF INFORMATION SECTION ===
-Device Model:     INTEL SSDSC2BB160G4T
-Serial Number:    PHWL445600MP160MGN
-LU WWN Device Id: 5 5cd2e4 04c43c8f2
-Add. Product Id:  DELL(tm)
-Firmware Version: D201DL13
-User Capacity:    160,041,885,696 bytes [160 GB]
-Sector Sizes:     512 bytes logical, 4096 bytes physical
-Rotation Rate:    Solid State Device
-```
-
-Disk Speed:
-
-```
-admin@hemingserver1:~/RDMA_Paxos/apps$ dd if=/dev/zero of=/tmp/output bs=8k count=20k
-20480+0 records in
-20480+0 records out
-167772160 bytes (168 MB) copied, 0.890525 s, 188 MB/s
-admin@hemingserver1:~/RDMA_Paxos/apps$ dd if=/dev/zero of=/tmp/output bs=8k count=20k
-20480+0 records in
-20480+0 records out
-167772160 bytes (168 MB) copied, 0.893626 s, 188 MB/s
-admin@hemingserver1:~/RDMA_Paxos/apps$ 
-
-```
-
+The document introduced how to add a testing task for our project.
