@@ -19,7 +19,7 @@ typedef struct peer_t{
 
 struct consensus_component_t{
     con_role my_role;
-    uint32_t node_id;
+    node_id_t node_id;
 
     view cur_view;
     view_stamp highest_seen_vs; 

@@ -18,7 +18,10 @@ typedef struct request_record_t{
 void init_consensus_comp(consensus_component* consensus_comp, const char* log_path, node_id_t node_id){
         consensus_comp->cur_view.view_id = 1;
         consensus_comp->cur_view.req_id = 0;
-
+        /* memset(consensus_comp, 0, sizeof(consensus_component))
+         * LEADER = 0
+         * during zookeeper_init, we go into rsm_op in recv accidentally*/
+        consensus_comp->my_role = SECONDARY;
         consensus_comp->highest_seen_vs.view_id = 1;
         consensus_comp->highest_seen_vs.req_id = 0;
         consensus_comp->committed.view_id = 1; 

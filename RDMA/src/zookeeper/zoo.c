@@ -40,10 +40,10 @@ void zookeeper_init_watcher(zhandle_t *izh, int type, int state, const char *pat
 
 static int check_leader(consensus_component* consensus_comp)
 {
-	int rc;
+	int rc, i, zoo_data_len = ZDATALEN;
 	char str[512];
 	
-	sprintf(str, "%"PRId64",%"PRIu32",%"PRIu32"", consensus_comp->node_id, srv_data.tail, consensus_comp->cur_view.view_id);
+	sprintf(str, "%"PRId64",%"PRIu32"", consensus_comp->node_id, srv_data.tail);
 	rc = zoo_set(zh, consensus_comp->znode_name, str, strlen(str), -1);
 	if (rc)
 	{
@@ -56,69 +56,75 @@ static int check_leader(consensus_component* consensus_comp)
 		fprintf(stderr, "Error %d for zoo_get_children\n", rc);
 	}
 
-	int zoo_data_len = ZDATALEN;
 	char *p;
-	node_id_t temp_node_id[MAX_SERVER_COUNT];
-	for (int i = 0; i < children_list->count; ++i)
+	struct Stat *stat;
+	znodes_data *znodes = (znodes_data*)malloc(sizeof(znodes_data) * MAX_SERVER_COUNT);
+	for (i = 0; i < children_list->count; ++i)
 	{
 		char *zoo_data = malloc(ZDATALEN * sizeof(char));
 		char temp_znode_name[512];
 		get_znode_name(children_list->data[i], temp_znode_name);
 
-		rc = zoo_get(zh, temp_znode_name, 0, zoo_data, &zoo_data_len, NULL);
+		rc = zoo_get(zh, temp_znode_name, 0, zoo_data, &zoo_data_len, stat);
 		if (rc)
 		{
 			fprintf(stderr, "Error %d for zoo_get\n", rc);
 		}
 		p = strtok(zoo_data, ",");
-		temp_node_id[i] = atoi(p);
+		znodes[i]->node_id = atoi(p);
 		p = strtok(NULL, ",");
-		consensus_comp->peer_pool[temp_node_id[i]].tail = atoi(p);
+		znodes[i]->tail = atoi(p);
+		znodes[i]->c_time = stat->c_time;
 		free(zoo_data);
 	}
 	uint32_t max_tail;
-	for (int i = 0; i < children_list->count - 1; i++)
+	for (i = 0; i < children_list->count - 1; i++)
 	{
-		if (consensus_comp->peer_pool[temp_node_id[i]].tail > consensus_comp->peer_pool[temp_node_id[i + 1]].tail) {	
-			max_tail = consensus_comp->peer_pool[temp_node_id[i]].tail;
+		if (znodes[i]->tail > znodes[i + 1]->tail) {	
+			max_tail = znodes[i]->tail;
 		}else{
-			max_tail = consensus_comp->peer_pool[temp_node_id[i + 1]].tail;
+			max_tail = znodes[i + 1]->tail;
 		}
 	}
 
-	node_id_t leader_id;
-	int flag;
-	for (leader_id = 0; leader_id < consensus_comp->group_size; leader_id++)
+	uint32_t max_c_time;
+	for (i = 0; i < children_list->count - 1; i++)
 	{
-		flag = 0;
-		for (int i = 0; i < children_list->count; ++i)
-		{
-			if (leader_id == temp_node_id[i])
-			{
-				flag = 1;
-				break;
-			}
+		if (znodes[i]->c_time > znodes[i + 1]->c_time) {	
+			max_c_time = znodes[i]->c_time;
+		}else{
+			max_c_time = znodes[i + 1]->c_time;
 		}
-		if (!flag)
-			continue;
-		if (consensus_comp->peer_pool[leader_id].tail == max_tail){
+	}
+
+	for (i = 0; i < children_list->count; ++i)
+	{
+		if (znodes[i]->c_time == max_c_time && znodes[i]->tail == max_tail)
+		{
+			consensus_comp->cur_view.leader_id = znodes[i]->node_id;
 			break;
 		}
 	}
 
-	consensus_comp->cur_view.leader_id = leader_id;
-
-	if (leader_id == consensus_comp->node_id)
+	if (consensus_comp->cur_view.leader_id == consensus_comp->node_id)
 	{
 		consensus_comp->my_role = LEADER;
-		// recheck
+		//fprintf(stderr, "I am the leader\n");
+		for (i = 0; i < children_list->count - 1; ++i)
+		{
+			if (znodes[i]->tail != znodes[i + 1]->tail)
+			{
+				//recheck
+			}
+		}
 	}else{
 		consensus_comp->my_role = SECONDARY;
+		//fprintf(stderr, "I am a follower\n");
 		// RDMA read
 		// update view
 		// zoo_set
 	}
-
+	free(znodes);
 	return 0;
 }
 
@@ -159,7 +165,8 @@ int init_zookeeper(consensus_component* consensus_comp)
 
 	char znode_name[512];
 	get_znode_name(path_buffer, znode_name);
-	consensus_comp->znode_name = znode_name;
+	consensus_comp->znode_name = (char*)malloc(strlen(znode_name));
+	strcpy(consensus_comp->znode_name, znode_name);
 	check_leader(consensus_comp);
 
     rc = zoo_wget_children(zh, "/election", zoo_wget_children_watcher, (void*)consensus_comp, NULL);

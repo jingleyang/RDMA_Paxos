@@ -516,7 +516,7 @@ int init_rdma(consensus_component* consensus_comp)
 			return ret;
 		}
 		ret = client_connect_to_server();
-		if (ret > 0) { 
+		if (ret) { 
 			rdma_error("Failed to setup client connection , ret = %d \n", ret);
 			return ret;
 		}
