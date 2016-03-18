@@ -11,25 +11,25 @@ Options:
     clients     Number of parallel connections (default 50)
 
 ========== set ==========
-qps: 12681, time: 0.789 s
+qps: 29977, time: 0.334 s
 ========== get ==========
-qps: 15069, time: 0.664 s
+qps: 65373, time: 0.153 s
 ========== del ==========
-qps: 9845, time: 1.016 s
+qps: 32698, time: 0.306 s
 ========== hset ==========
-qps: 7815, time: 1.280 s
+qps: 31667, time: 0.316 s
 ========== hget ==========
-qps: 13640, time: 0.733 s
+qps: 63088, time: 0.159 s
 ========== hdel ==========
-qps: 11708, time: 0.854 s
+qps: 32475, time: 0.308 s
 ========== zset ==========
-qps: 10123, time: 0.988 s
+qps: 31855, time: 0.314 s
 ========== zget ==========
-qps: 14267, time: 0.701 s
+qps: 62920, time: 0.159 s
 ========== zdel ==========
-qps: 10562, time: 0.947 s
+qps: 32214, time: 0.310 s
 ========== qpush ==========
-qps: 10479, time: 0.954 s
+qps: 32056, time: 0.312 s
 ========== qpop ==========
-qps: 11068, time: 0.903 s
+qps: 32470, time: 0.308 s
 
