@@ -298,8 +298,8 @@ struct redisCommand redisCommandTable[] = {
 // #jingle#hello_cmd#add
     {"hello",helloCommand,2,"r",0,NULL,1,1,1,0,0},
     {"__WORLD__",worldCommand,2,"r",0,NULL,1,1,1,0,0},
-    {"diversity",diversityCommand,1,"r",0,NULL,1,1,1,0,0},
-    {"report_hash",report_hashCommand,3,"r",0,NULL,1,1,1,0,0}
+    {"diversity",diversityCommand,2,"r",0,NULL,1,1,1,0,0},
+    {"report_hash",report_hashCommand,4,"r",0,NULL,1,1,1,0,0}
 };
 
 struct evictionPoolEntry *evictionPoolAlloc(void);
