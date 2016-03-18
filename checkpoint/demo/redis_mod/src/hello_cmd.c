@@ -185,7 +185,7 @@ void report_hashval(uint64_t index, uint64_t hashval){
         return;
     }else{
         const char* slaveName=NULL;
-        if (16379==server.masterport){
+        if (16379==server.port){ // self port
             slaveName="Slave01";
         }else{
             slaveName="Slave02";
