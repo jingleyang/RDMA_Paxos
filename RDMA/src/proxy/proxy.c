@@ -20,11 +20,6 @@ proxy_node* proxy_init(node_id_t node_id, const char* start_mode, const char* co
         goto proxy_exit_error;
     }
 
-    if(pthread_mutex_init(&proxy->lock,NULL)){
-        err_log("PROXY : Cannot Init The Lock.\n");
-        goto proxy_exit_error;
-    }
-
     int build_log_ret = 0;
     if(log_path==NULL){
         log_path = ".";

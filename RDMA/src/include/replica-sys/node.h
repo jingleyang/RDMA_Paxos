@@ -3,7 +3,6 @@
 #include "../util/common-header.h"
 #include "../consensus/consensus.h"
 #include "../db/db-interface.h"
-#include "./replica.h"
 
 typedef struct peer_t{
     int peer_id;
@@ -13,7 +12,7 @@ typedef struct peer_t{
     size_t sock_len;
 }peer;
 
-typedef struct node_t{
+struct node_t{
 
     node_id_t node_id;
 
@@ -40,7 +39,8 @@ typedef struct node_t{
 
     char *zoo_host_port;
     
-}node;
+};
+typedef struct node_t node;
 
 node* system_initialize(int64_t node_id,const char* start_mode,const char* config_path,const char* log_path,void* db_ptr,void* arg);
 

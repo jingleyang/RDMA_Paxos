@@ -12,11 +12,12 @@ typedef enum con_role_t{
     SECONDARY = 1,
 }con_role;
 
-typedef struct consensus_component_t{ con_role my_role;
+struct consensus_component_t{ con_role my_role;
     uint32_t node_id;
 
     uint32_t group_size;
     struct node_t* my_node;
+    struct sockaddr_in my_address;
 
     FILE* sys_log_file;
     int sys_log;
@@ -30,9 +31,10 @@ typedef struct consensus_component_t{ con_role my_role;
     db* db_ptr;
     
     pthread_mutex_t mutex;
-}consensus_component;
+};
+typedef struct consensus_component_t consensus_component; 
 
-consensus_component* init_consensus_comp(struct node_t*,uint32_t,FILE*,int,int,
+consensus_component* init_consensus_comp(struct node_t*,struct sockaddr_in,uint32_t,FILE*,int,int,
         const char*,void*,int,
         view*,view_stamp*,view_stamp*,view_stamp*,void*);
 

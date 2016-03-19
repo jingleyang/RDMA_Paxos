@@ -26,7 +26,7 @@ typedef struct request_record_t{
 }__attribute__((packed))request_record;
 #define REQ_RECORD_SIZE(M) (sizeof(request_record)+(M->data_size))
 
-consensus_component* init_consensus_comp(struct node_t* node,uint32_t node_id, FILE* log, int sys_log,int stat_log,const char* db_name,void* db_ptr,int group_size,
+consensus_component* init_consensus_comp(struct node_t* node,struct sockaddr_in my_address,uint32_t node_id, FILE* log, int sys_log,int stat_log,const char* db_name,void* db_ptr,int group_size,
         view* cur_view,view_stamp* to_commit,view_stamp* highest_committed_vs,view_stamp* highest,void* arg){
     consensus_component* comp = (consensus_component*)malloc(sizeof(consensus_component));
     memset(comp,0,sizeof(consensus_component));
@@ -54,6 +54,7 @@ consensus_component* init_consensus_comp(struct node_t* node,uint32_t node_id, F
         comp->highest_to_commit_vs = to_commit;
         comp->highest_to_commit_vs->view_id = 1;
         comp->highest_to_commit_vs->req_id = 0;
+        comp->my_address = my_address;
 
         pthread_mutex_init(&comp->mutex, NULL);
 
@@ -89,7 +90,7 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     int ret = 1;
     pthread_mutex_lock(&comp->mutex);
     view_stamp next = get_next_view_stamp(comp);
-    //CON_LOG(comp, "Leader trying to reach a consensus on view id %d, req id %d\n", next.view_id, next.req_id);
+    SYS_LOG(comp, "Leader trying to reach a consensus on view id %d, req id %d\n", next.view_id, next.req_id);
 
     /* record the data persistently */
     db_key_type record_no = vstol(&next);
@@ -143,7 +144,7 @@ handle_submit_req_exit:
     //TODO: do we need the lock here?
     while (new_entry->msg_vs.req_id > comp->highest_committed_vs->req_id + 1);
     comp->highest_committed_vs->req_id = comp->highest_committed_vs->req_id + 1;
-    //CON_LOG(comp, "Leader finished the consensus on view id %d, req id %d\n", next.view_id, next.req_id);
+    SYS_LOG(comp, "Leader finished the consensus on view id %d, req id %d\n", next.view_id, next.req_id);
     return ret;
 }
 
@@ -165,8 +166,8 @@ void *handle_accept_req(void* arg)
         if (new_entry->req_canbe_exed.view_id != 0)//TODO atmoic opeartion
         {
             int sock = socket(AF_INET, SOCK_STREAM, 0);
-            //connect(sock, (struct sockaddr*)&comp->my_node->my_address, sizeof(struct sockaddr_in)); //TODO: why? Broken pipe. Maybe the server closes the socket
-            //CON_LOG(comp, "Replica %d handling view id %d req id %d\n", comp->node_id, new_entry->msg_vs.view_id, new_entry->msg_vs.req_id);
+            connect(sock, (struct sockaddr*)&comp->my_address, sizeof(struct sockaddr_in)); //TODO: why? Broken pipe. Maybe the server closes the socket
+            SYS_LOG(comp, "Replica %d handling view id %d req id %d\n", comp->node_id, new_entry->msg_vs.view_id, new_entry->msg_vs.req_id);
             if(new_entry->msg_vs.view_id < comp->cur_view->view_id){
                 // TODO
                 //goto reloop;
@@ -210,7 +211,7 @@ void *handle_accept_req(void* arg)
                 {
                     retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&retrieve_data);
                     send(sock, retrieve_data->data, retrieve_data->data_size, 0);
-                    //CON_LOG(comp, "Replica %d try to exed view id %d req id %d\n", comp->node_id, ltovs(index).view_id, ltovs(index).req_id);
+                    SYS_LOG(comp, "Replica %d try to exed view id %d req id %d\n", comp->node_id, ltovs(index).view_id, ltovs(index).req_id);
                 }
                 *(comp->highest_committed_vs) = new_entry->req_canbe_exed;
             }

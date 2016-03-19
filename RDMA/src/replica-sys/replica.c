@@ -212,10 +212,16 @@ int initialize_node(node* my_node,const char* log_path, void* db_ptr,void* arg){
             }
     }
 
-    connect_peers(my_node);
+    if (my_node->cur_view.leader_id==my_node->node_id)
+    {
+        connect_peers(my_node->peer_pool[my_node->node_id].peer_address, 1, my_node->node_id);
+    } else{
+        connect_peers(my_node->peer_pool[my_node->cur_view.leader_id].peer_address, 0, my_node->node_id);
+    }
+    
     my_node->consensus_comp = NULL;
 
-    my_node->consensus_comp = init_consensus_comp(my_node,
+    my_node->consensus_comp = init_consensus_comp(my_node,my_node->my_address,
             my_node->node_id,my_node->sys_log_file,my_node->sys_log,
             my_node->stat_log,my_node->db_name,db_ptr,my_node->group_size,
             &my_node->cur_view,&my_node->highest_to_commit,&my_node->highest_committed,

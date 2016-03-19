@@ -11,7 +11,6 @@
 #include <inttypes.h>
 
 #include "../util/common-header.h"
-#include "../replica-sys/node.h"
 
 #define CQ_CAPACITY (16)
 
@@ -26,6 +25,7 @@
 #define LOG_SIZE  1*PAGE_SIZE
 
 struct __attribute((packed)) rdma_buffer_attr {
+  node_id_t node_id;
   uint64_t address;
   uint32_t length;
 	uint32_t buf_rkey;
@@ -69,6 +69,6 @@ void show_rdma_cmid(struct rdma_cm_id *id);
 int find_max_inline(struct ibv_context *context, struct ibv_pd *pd, uint32_t *max_inline_arg);
 int rdma_write(uint8_t target, void* buf, uint32_t len, uint32_t offset);
 
-int connect_peers(node *my_node);
+int connect_peers(struct sockaddr_in *server_addr, int is_leader, node_id_t node_id);
 
 #endif /* RDMA_COMMON_H */

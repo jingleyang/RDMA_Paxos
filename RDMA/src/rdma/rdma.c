@@ -20,6 +20,8 @@ static struct ibv_send_wr server_send_wr, *bad_server_send_wr = NULL;
 
 static struct ibv_sge client_recv_sge, client_send_sge, server_recv_sge, server_send_sge;
 
+static node_id_t myid;
+
 static int client_prepare_connection(struct sockaddr_in *s_addr)
 {
 	struct rdma_cm_event *cm_event = NULL;
@@ -197,6 +199,8 @@ static int client_send_metadata_to_server()
 	client_metadata_attr.address = (uint64_t) log_buffer_mr->addr; 
 	client_metadata_attr.length = log_buffer_mr->length; 
 	client_metadata_attr.buf_rkey = log_buffer_mr->rkey;
+	client_metadata_attr.node_id = myid;
+
 
 	client_metadata_mr = rdma_buffer_register(pd, &client_metadata_attr, sizeof(client_metadata_attr), IBV_ACCESS_LOCAL_WRITE);
 	if(!client_metadata_mr) {
@@ -295,15 +299,41 @@ static int setup_client_resources()
 	return ret;
 }
 
-static int start_rdma_server() 
+/* Starts an RDMA server by allocating basic connection resources */
+static int start_rdma_server(struct sockaddr_in *server_addr) 
 {
 	struct rdma_cm_event *cm_event = NULL;
 	int ret = -1;
 
-	/* now, we expect a client to connect and generate a RDMA_CM_EVNET_CONNECT_REQUEST 
-	 * We wait (block) on the connection management event channel for 
-	 * the connect event. 
-	 */
+	cm_event_channel = rdma_create_event_channel();
+	if (!cm_event_channel) {
+		rdma_error("Creating cm event channel failed with errno : (%d)", -errno);
+		return -errno;
+	}
+	rdma_debug("RDMA CM event channel is created successfully at %p \n", cm_event_channel);
+
+	ret = rdma_create_id(cm_event_channel, &cm_server_id, NULL, RDMA_PS_TCP);
+	if (ret) {
+		rdma_error("Creating server cm id failed with errno: %d ", -errno);
+		return -errno;
+	}
+	rdma_debug("A RDMA connection id for the server is created \n");
+
+	ret = rdma_bind_addr(cm_server_id, (struct sockaddr*) server_addr);
+	if (ret) {
+		rdma_error("Failed to bind server address, errno: %d \n", -errno);
+		return -errno;
+	}
+	rdma_debug("Server RDMA CM id is successfully binded \n");
+
+	ret = rdma_listen(cm_server_id, 8);
+	if (ret) {
+		rdma_error("rdma_listen failed to listen on server address, errno: %d ",
+				-errno);
+		return -errno;
+	}
+	printf("Server is listening successfully at: %s , port: %d \n", inet_ntoa(server_addr->sin_addr), ntohs(server_addr->sin_port));
+
 	ret = process_rdma_cm_event(cm_event_channel, RDMA_CM_EVENT_CONNECT_REQUEST, &cm_event);
 	if (ret) {
 		rdma_error("Failed to get cm event, ret = %d \n" , ret);
@@ -400,6 +430,7 @@ static int send_server_metadata_to_client()
 	server_metadata_attr.address = (uint64_t) log_buffer_mr->addr; 
 	server_metadata_attr.length = log_buffer_mr->length; 
 	server_metadata_attr.buf_rkey = log_buffer_mr->rkey;
+	server_metadata_attr.node_id = myid;
 
 	server_metadata_mr = rdma_buffer_register(pd, &server_metadata_attr, sizeof(server_metadata_attr), IBV_ACCESS_LOCAL_WRITE);
 	if(!server_metadata_mr) {
@@ -426,84 +457,52 @@ static int send_server_metadata_to_client()
 	return 0;
 }
 
-int connect_peers(node* my_node)
+static void *event_thread(void *arg)
 {
 	int ret;
-	
-	if (my_node->cur_view.leader_id==my_node->node_id)
+	struct sockaddr_in *server_sockaddr = (struct sockaddr_in *)arg;
+	while (1)
 	{
-		struct sockaddr_in *server_addr = my_node->peer_pool[my_node->node_id].peer_address;
-		int ret = -1;
-
-		log_buffer = calloc(1, LOG_SIZE);
-
-		cm_event_channel = rdma_create_event_channel();
-		if (!cm_event_channel) {
-			rdma_error("Creating cm event channel failed with errno : (%d)", -errno);
-			return -errno;
-		}
-		rdma_debug("RDMA CM event channel is created successfully at %p \n", cm_event_channel);
-
-		ret = rdma_create_id(cm_event_channel, &cm_server_id, NULL, RDMA_PS_TCP);
+		ret = start_rdma_server(server_sockaddr);
 		if (ret) {
-			rdma_error("Creating server cm id failed with errno: %d ", -errno);
-			return -errno;
+			rdma_error("RDMA server failed to start cleanly, ret = %d \n", ret);
 		}
-		rdma_debug("A RDMA connection id for the server is created \n");
-
-		ret = rdma_bind_addr(cm_server_id, (struct sockaddr*) server_addr);
+		ret = setup_client_resources();
+		if (ret) { 
+			rdma_error("Failed to setup client resources, ret = %d \n", ret);
+		}
+		ret = accept_client_connection();
 		if (ret) {
-			rdma_error("Failed to bind server address, errno: %d \n", -errno);
-			return -errno;
+			rdma_error("Failed to handle client cleanly, ret = %d \n", ret);
 		}
-		rdma_debug("Server RDMA CM id is successfully binded \n");
-
-		/* Now we start to listen on the passed IP and port. However unlike
-		 * normal TCP listen, this is a non-blocking call. When a new client is 
-		 * connected, a new connection management (CM) event is generated on the 
-		 * RDMA CM event channel from where the listening id was created.
-		 */
-
-		ret = rdma_listen(cm_server_id, 8);
+		ret = send_server_metadata_to_client();
 		if (ret) {
-			rdma_error("rdma_listen failed to listen on server address, errno: %d ", -errno);
-			return -errno;
+			rdma_error("Failed to send server metadata to the client, ret = %d \n", ret);
 		}
-		printf("Server is listening successfully at: %s , port: %d \n", inet_ntoa(server_addr->sin_addr), ntohs(server_addr->sin_port));
+		srv_data.qp[client_metadata_attr.node_id] = client_qp;
+		srv_data.metadata_attr[client_metadata_attr.node_id] = client_metadata_attr;
+		srv_data.local_key[client_metadata_attr.node_id] = log_buffer_mr->lkey;
+		srv_data.cq[client_metadata_attr.node_id] = cq;
 
-		for (int i = 0; i < my_node->group_size; ++i)
-		{
-			if (i == my_node->node_id)
-				continue;
-			ret = start_rdma_server();
-			if (ret) {
-				rdma_error("RDMA server failed to start cleanly, ret = %d \n", ret);
-				return ret;
-			}
-			ret = setup_client_resources();
-			if (ret) { 
-				rdma_error("Failed to setup client resources, ret = %d \n", ret);
-				return ret;
-			}
-			ret = accept_client_connection();
-			if (ret) {
-				rdma_error("Failed to handle client cleanly, ret = %d \n", ret);
-				return ret;
-			}
-			ret = send_server_metadata_to_client();
-			if (ret) {
-				rdma_error("Failed to send server metadata to the client, ret = %d \n", ret);
-				return ret;
-			}
-			srv_data.qp[i] = client_qp;
-			srv_data.metadata_attr[i] = client_metadata_attr;
-			srv_data.local_key[i] = log_buffer_mr->lkey;
-			srv_data.cq[i] = cq;
-		}
 		srv_data.log_mr = log_buffer_mr->addr;
+	}
+	return 0;
+}
+
+int connect_peers(struct sockaddr_in *server_addr, int is_leader, node_id_t node_id)
+{
+	int ret;
+	myid = node_id;
+	if (is_leader)
+	{
+		log_buffer = calloc(1, LOG_SIZE);
+		pthread_t cm_thread;
+
+		pthread_create(&cm_thread, NULL, &event_thread, server_addr);
+
 		return 0;
 	}else{
-		ret = client_prepare_connection(my_node->peer_pool[my_node->cur_view.leader_id].peer_address);
+		ret = client_prepare_connection(server_addr);
 		if (ret) { 
 			rdma_error("Failed to setup client connection , ret = %d \n", ret);
 			return ret;
@@ -524,10 +523,10 @@ int connect_peers(node* my_node)
 			rdma_error("Failed to setup client connection , ret = %d \n", ret);
 			return ret;
 		}
-		srv_data.qp[my_node->cur_view.leader_id] = client_qp;
-		srv_data.local_key[my_node->cur_view.leader_id] = log_buffer_mr->lkey;
-		srv_data.metadata_attr[my_node->cur_view.leader_id] = server_metadata_attr;
-		srv_data.cq[my_node->cur_view.leader_id] = client_cq;
+		srv_data.qp[server_metadata_attr.node_id] = client_qp;
+		srv_data.local_key[server_metadata_attr.node_id] = log_buffer_mr->lkey;
+		srv_data.metadata_attr[server_metadata_attr.node_id] = server_metadata_attr;
+		srv_data.cq[server_metadata_attr.node_id] = client_cq;
 		srv_data.log_mr = log_buffer_mr->addr;
 		return ret;
 	}

@@ -20,7 +20,8 @@ void show_rdma_buffer_attr(struct rdma_buffer_attr *attr){
 		return;
 	}
 	printf("---------------------------------------------------------\n");
-	printf("buffer attr, addr: %p , len: %u , remote key : 0x%x \n", 
+	printf("buffer attr, id: %"PRId64" , addr: %p , len: %u , remote key : 0x%x \n", 
+			attr->node_id,
 			(void*) attr->address, 
 			(unsigned int) attr->length,
 			attr->buf_rkey);
