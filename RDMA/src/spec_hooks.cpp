@@ -25,7 +25,7 @@ void tern_init_func(int argc, char **argv, char **env){
     saved_init_func(argc, argv, env);
 
   printf("tern_init_func is called\n");
-  char* config_path = "/home/cheng/RDMA_Paxos/shm/target/nodes.local.cfg";
+  char* config_path = "/home/wangcheng/Downloads/RDMA_Paxos-master/RDMA/target/nodes.local.cfg";
 
   char* log_dir = NULL;
   const char* start_mode = getenv("start_mode");

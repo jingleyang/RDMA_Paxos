@@ -21,6 +21,7 @@ static struct ibv_send_wr server_send_wr, *bad_server_send_wr = NULL;
 static struct ibv_sge client_recv_sge, client_send_sge, server_recv_sge, server_send_sge;
 
 static node_id_t myid;
+dare_server_data_t srv_data;
 
 static int client_prepare_connection(struct sockaddr_in *s_addr)
 {
@@ -299,41 +300,15 @@ static int setup_client_resources()
 	return ret;
 }
 
-/* Starts an RDMA server by allocating basic connection resources */
-static int start_rdma_server(struct sockaddr_in *server_addr) 
+static int start_rdma_server() 
 {
 	struct rdma_cm_event *cm_event = NULL;
 	int ret = -1;
 
-	cm_event_channel = rdma_create_event_channel();
-	if (!cm_event_channel) {
-		rdma_error("Creating cm event channel failed with errno : (%d)", -errno);
-		return -errno;
-	}
-	rdma_debug("RDMA CM event channel is created successfully at %p \n", cm_event_channel);
-
-	ret = rdma_create_id(cm_event_channel, &cm_server_id, NULL, RDMA_PS_TCP);
-	if (ret) {
-		rdma_error("Creating server cm id failed with errno: %d ", -errno);
-		return -errno;
-	}
-	rdma_debug("A RDMA connection id for the server is created \n");
-
-	ret = rdma_bind_addr(cm_server_id, (struct sockaddr*) server_addr);
-	if (ret) {
-		rdma_error("Failed to bind server address, errno: %d \n", -errno);
-		return -errno;
-	}
-	rdma_debug("Server RDMA CM id is successfully binded \n");
-
-	ret = rdma_listen(cm_server_id, 8);
-	if (ret) {
-		rdma_error("rdma_listen failed to listen on server address, errno: %d ",
-				-errno);
-		return -errno;
-	}
-	printf("Server is listening successfully at: %s , port: %d \n", inet_ntoa(server_addr->sin_addr), ntohs(server_addr->sin_port));
-
+	/* now, we expect a client to connect and generate a RDMA_CM_EVNET_CONNECT_REQUEST 
+	 * We wait (block) on the connection management event channel for 
+	 * the connect event. 
+	 */
 	ret = process_rdma_cm_event(cm_event_channel, RDMA_CM_EVENT_CONNECT_REQUEST, &cm_event);
 	if (ret) {
 		rdma_error("Failed to get cm event, ret = %d \n" , ret);
@@ -460,11 +435,44 @@ static int send_server_metadata_to_client()
 static void *event_thread(void *arg)
 {
 	int ret;
-	struct sockaddr_in *server_sockaddr = (struct sockaddr_in *)arg;
-	while (1)
-	{
-		ret = start_rdma_server(server_sockaddr);
-		if (ret) {
+	struct sockaddr_in *server_addr = (struct sockaddr_in *)arg;
+
+	cm_event_channel = rdma_create_event_channel();
+	if (!cm_event_channel) {
+		rdma_error("Creating cm event channel failed with errno : (%d)", -errno);
+		return -errno;
+	}
+	rdma_debug("RDMA CM event channel is created successfully at %p \n", cm_event_channel);
+
+	ret = rdma_create_id(cm_event_channel, &cm_server_id, NULL, RDMA_PS_TCP);
+	if (ret) {
+		rdma_error("Creating server cm id failed with errno: %d ", -errno);
+	}
+
+	rdma_debug("A RDMA connection id for the server is created \n");
+
+	ret = rdma_bind_addr(cm_server_id, (struct sockaddr*) server_addr);
+	if (ret) {
+		rdma_error("Failed to bind server address, errno: %d \n", -errno);
+	}
+	rdma_debug("Server RDMA CM id is successfully binded \n");
+
+	/* Now we start to listen on the passed IP and port. However unlike
+	 * normal TCP listen, this is a non-blocking call. When a new client is 
+	 * connected, a new connection management (CM) event is generated on the 
+	 * RDMA CM event channel from where the listening id was created.
+	 */
+
+	 ret = rdma_listen(cm_server_id, 8);
+	 if (ret) {
+	 	rdma_error("rdma_listen failed to listen on server address, errno: %d ", -errno);
+	 }
+	 printf("Server is listening successfully at: %s , port: %d \n", inet_ntoa(server_addr->sin_addr), ntohs(server_addr->sin_port));
+
+	 while (1)
+	 {
+	 	ret = start_rdma_server(server_addr);
+	 	if (ret) {
 			rdma_error("RDMA server failed to start cleanly, ret = %d \n", ret);
 		}
 		ret = setup_client_resources();
@@ -485,7 +493,7 @@ static void *event_thread(void *arg)
 		srv_data.cq[client_metadata_attr.node_id] = cq;
 
 		srv_data.log_mr = log_buffer_mr->addr;
-	}
+	 }
 	return 0;
 }
 

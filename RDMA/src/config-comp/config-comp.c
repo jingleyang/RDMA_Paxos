@@ -24,7 +24,7 @@ int consensus_read_config(node* cur_node,const char* config_path){
     }
 
     config_setting_t *nodes_config;
-    nodes_config = config_lookup(&config_file,"rdma_config");
+    nodes_config = config_lookup(&config_file,"consensus_config");
 
     if(NULL==nodes_config){
         err_log("CONSENSUS : Cannot Find Nodes Settings.\n");
