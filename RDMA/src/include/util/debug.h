@@ -1,14 +1,21 @@
 #ifndef DEBUG_H
 #define DEBUG_H
 
-#define con_err_log(args...) do { \
+#define debug_log(args...) do { \
     struct timeval tv; \
     gettimeofday(&tv,0); \
     fprintf(stderr,"%lu.%06lu:",tv.tv_sec,tv.tv_usec); \
     fprintf(stderr,args); \
 }while(0);
 
-#define rec_con_log(out,args...) do { \
+#define err_log(args...) do { \
+    struct timeval tv; \
+    gettimeofday(&tv,0); \
+    fprintf(stderr,"%lu.%06lu:",tv.tv_sec,tv.tv_usec); \
+    fprintf(stderr,args); \
+}while(0);
+
+#define rec_log(out,args...) do { \
     struct timeval tv; \
     gettimeofday(&tv,0); \
     fprintf((out),"%lu.%06lu:",tv.tv_sec,tv.tv_usec); \
@@ -16,9 +23,13 @@
     fflush(out); \
 }while(0);
 
-#define safe_rec_con_log(x,args...) {if(NULL!=(x)){rec_con_log((x),args);}}
+#define safe_rec_log(x,args...) {if(NULL!=(x)){rec_log((x),args);}}
 
-#define CON_LOG(x,args...) {safe_rec_con_log(((x)->con_log_file),args)}
+#define SYS_LOG(x,args...) {if((x)->sys_log){safe_rec_log(((x)->sys_log_file),args)}}
+
+#define STAT_LOG(x,args...) {if((x)->stat_log){safe_rec_log(((x)->sys_log_file),args)}}
+
+#define REQ_LOG(x,args...) {if((x)->req_log){safe_rec_log(((x)->sys_log_file),args)}}
 
 #define rdma_error(msg, args...) do {\
 	fprintf(stderr, "%s : %d : ERROR : "msg, __FILE__, __LINE__, ## args);\

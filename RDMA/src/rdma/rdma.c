@@ -1,5 +1,4 @@
 #include "../include/rdma/rdma_common.h"
-#include "../include/log/log.h"
 
 static struct rdma_event_channel *cm_event_channel = NULL;
 static struct rdma_cm_id *cm_server_id = NULL, *cm_client_id = NULL;
@@ -427,13 +426,13 @@ static int send_server_metadata_to_client()
 	return 0;
 }
 
-int init_rdma(consensus_component* consensus_comp)
+int connect_peers(node* my_node)
 {
 	int ret;
-
-	if (consensus_comp->my_role == LEADER)
+	
+	if (my_node->cur_view.leader_id==my_node->node_id)
 	{
-		struct sockaddr_in *server_addr = consensus_comp->peer_pool[consensus_comp->node_id].peer_address;
+		struct sockaddr_in *server_addr = my_node->peer_pool[my_node->node_id].peer_address;
 		int ret = -1;
 
 		log_buffer = calloc(1, LOG_SIZE);
@@ -472,9 +471,9 @@ int init_rdma(consensus_component* consensus_comp)
 		}
 		printf("Server is listening successfully at: %s , port: %d \n", inet_ntoa(server_addr->sin_addr), ntohs(server_addr->sin_port));
 
-		for (int i = 0; i < consensus_comp->group_size; ++i)
+		for (int i = 0; i < my_node->group_size; ++i)
 		{
-			if (i == consensus_comp->node_id)
+			if (i == my_node->node_id)
 				continue;
 			ret = start_rdma_server();
 			if (ret) {
@@ -504,7 +503,7 @@ int init_rdma(consensus_component* consensus_comp)
 		srv_data.log_mr = log_buffer_mr->addr;
 		return 0;
 	}else{
-		ret = client_prepare_connection(consensus_comp->peer_pool[consensus_comp->cur_view.leader_id].peer_address);
+		ret = client_prepare_connection(my_node->peer_pool[my_node->cur_view.leader_id].peer_address);
 		if (ret) { 
 			rdma_error("Failed to setup client connection , ret = %d \n", ret);
 			return ret;
@@ -525,10 +524,10 @@ int init_rdma(consensus_component* consensus_comp)
 			rdma_error("Failed to setup client connection , ret = %d \n", ret);
 			return ret;
 		}
-		srv_data.qp[consensus_comp->cur_view.leader_id] = client_qp;
-		srv_data.local_key[consensus_comp->cur_view.leader_id] = log_buffer_mr->lkey;
-		srv_data.metadata_attr[consensus_comp->cur_view.leader_id] = server_metadata_attr;
-		srv_data.cq[consensus_comp->cur_view.leader_id] = client_cq;
+		srv_data.qp[my_node->cur_view.leader_id] = client_qp;
+		srv_data.local_key[my_node->cur_view.leader_id] = log_buffer_mr->lkey;
+		srv_data.metadata_attr[my_node->cur_view.leader_id] = server_metadata_attr;
+		srv_data.cq[my_node->cur_view.leader_id] = client_cq;
 		srv_data.log_mr = log_buffer_mr->addr;
 		return ret;
 	}

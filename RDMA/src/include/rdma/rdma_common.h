@@ -11,7 +11,7 @@
 #include <inttypes.h>
 
 #include "../util/common-header.h"
-#include "../consensus/consensus.h"
+#include "../replica-sys/node.h"
 
 #define CQ_CAPACITY (16)
 
@@ -21,6 +21,9 @@
 #define Q_DEPTH 64
 #define S_DEPTH 32
 #define S_DEPTH_ 31
+
+#define PAGE_SIZE 4096
+#define LOG_SIZE  1*PAGE_SIZE
 
 struct __attribute((packed)) rdma_buffer_attr {
   uint64_t address;
@@ -66,14 +69,6 @@ void show_rdma_cmid(struct rdma_cm_id *id);
 int find_max_inline(struct ibv_context *context, struct ibv_pd *pd, uint32_t *max_inline_arg);
 int rdma_write(uint8_t target, void* buf, uint32_t len, uint32_t offset);
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-  int init_rdma(consensus_component* consensus_comp);
-
-#ifdef __cplusplus
-}
-#endif
+int connect_peers(node *my_node);
 
 #endif /* RDMA_COMMON_H */

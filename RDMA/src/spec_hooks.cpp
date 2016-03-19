@@ -4,14 +4,11 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include "include/consensus/consensus.h"
-#include "include/util/debug.h"
-#include "include/rdma/rdma_common.h"
-#include "include/zookeeper/zoo.h"
-#include "include/config-comp/config-comp.h"
+#include "include/proxy/proxy.h"
 
 #define dprintf(fmt...)
 
-consensus_component* consensus_comp;
+struct proxy_node_t* proxy;
 
 typedef int (*main_type)(int, char**, char**);
 
@@ -29,21 +26,18 @@ void tern_init_func(int argc, char **argv, char **env){
 
   printf("tern_init_func is called\n");
   char* config_path = "/home/cheng/RDMA_Paxos/shm/target/nodes.local.cfg";
-  char* log_path = NULL;
+
+  char* log_dir = NULL;
+  const char* start_mode = getenv("start_mode");
   const char* id = getenv("node_id");
-  consensus_comp = (consensus_component*)malloc(sizeof(consensus_component));
-  memset(consensus_comp, 0, sizeof(consensus_component));
-  consensus_comp->node_id = atoi(id);
+  int64_t node_id = atoi(id);
 
-  consensus_read_config(consensus_comp, config_path);
-  init_consensus_comp(consensus_comp, log_path, consensus_comp->node_id);
-  init_zookeeper(consensus_comp);
-  init_rdma(consensus_comp);
+  proxy = proxy_init(node_id, start_mode, config_path, log_dir);
 
-  if (consensus_comp->my_role == SECONDARY)
+  if (proxy->con_node->cur_view.leader_id != proxy->con_node->node_id)
   {
     pthread_t rep_th;
-    pthread_create(&rep_th, NULL, &handle_accept_req, (void*)consensus_comp);
+    pthread_create(&rep_th, NULL, &handle_accept_req, (void*)(proxy->con_node->consensus_comp));
   }
 }
 
@@ -127,9 +121,9 @@ extern "C" ssize_t recv(int sockfd, void *buf, size_t len, int flags)
   orig_recv = (orig_recv_type) dlsym(RTLD_NEXT, "recv");
   ssize_t ret = orig_recv(sockfd, buf, len, flags);
 
-  if (consensus_comp->zfd != sockfd && consensus_comp->my_role == LEADER)
+  if (/*consensus_comp->zfd != sockfd && */proxy->con_node->cur_view.leader_id == proxy->con_node->node_id)
   {
-    rsm_op(consensus_comp, buf, ret);
+    rsm_op(proxy->con_node->consensus_comp, buf, ret);
   }
 
   return ret;

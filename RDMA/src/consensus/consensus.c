@@ -2,10 +2,21 @@
 #include "../include/consensus/consensus-msg.h"
 
 #include "../include/rdma/rdma_common.h"
-#include "../include/log/log.h"
-#include "../include/config-comp/config-comp.h"
 
-#include <sys/stat.h>
+typedef struct log_entry_t{
+    accept_ack ack[MAX_SERVER_COUNT];
+
+    view_stamp msg_vs;
+    view_stamp req_canbe_exed;
+    node_id_t node_id;
+    size_t data_size;
+    char data[0];
+}log_entry;
+
+uint32_t log_entry_len(log_entry* entry)
+{
+    return (uint32_t)(sizeof(log_entry) + entry->data_size);
+}
 
 typedef struct request_record_t{
     struct timeval created_time; // data created timestamp
@@ -15,48 +26,48 @@ typedef struct request_record_t{
 }__attribute__((packed))request_record;
 #define REQ_RECORD_SIZE(M) (sizeof(request_record)+(M->data_size))
 
-void init_consensus_comp(consensus_component* consensus_comp, const char* log_path, node_id_t node_id){
-        consensus_comp->cur_view.view_id = 1;
-        consensus_comp->cur_view.req_id = 0;
-        /* memset(consensus_comp, 0, sizeof(consensus_component))
-         * LEADER = 0
-         * during zookeeper_init, we go into rsm_op in recv accidentally*/
-        consensus_comp->my_role = SECONDARY;
-        consensus_comp->highest_seen_vs.view_id = 1;
-        consensus_comp->highest_seen_vs.req_id = 0;
-        consensus_comp->committed.view_id = 1; 
-        consensus_comp->committed.req_id = 0;
-        pthread_mutex_init(&consensus_comp->mutex, NULL);
+consensus_component* init_consensus_comp(struct node_t* node,uint32_t node_id, FILE* log, int sys_log,int stat_log,const char* db_name,void* db_ptr,int group_size,
+        view* cur_view,view_stamp* to_commit,view_stamp* highest_committed_vs,view_stamp* highest,void* arg){
+    consensus_component* comp = (consensus_component*)malloc(sizeof(consensus_component));
+    memset(comp,0,sizeof(consensus_component));
 
-        int build_log_ret = 0;
-        if(log_path == NULL){
-            log_path = ".";
+    if(NULL!=comp){
+        comp->db_ptr = db_ptr;  
+        comp->sys_log = sys_log;
+        comp->stat_log = stat_log;
+        comp->sys_log_file = log;
+        comp->my_node = node;
+        comp->node_id = node_id;
+        comp->group_size = group_size;
+        comp->cur_view = cur_view;
+        if(comp->cur_view->leader_id == comp->node_id){
+            comp->my_role = LEADER;
         }else{
-            if((build_log_ret = mkdir(log_path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) != 0){
-                if(errno != EEXIST){
-                    con_err_log("Log Directory Creation Failed, No Log Will Be Recorded.\n");
-                }else{
-                    build_log_ret = 0;
-                }
-            }
+            comp->my_role = SECONDARY;
         }
+        comp->highest_seen_vs = highest;
+        comp->highest_seen_vs->view_id = 1;
+        comp->highest_seen_vs->req_id = 0;
+        comp->highest_committed_vs = highest_committed_vs; 
+        comp->highest_committed_vs->view_id = 1; 
+        comp->highest_committed_vs->req_id = 0; 
+        comp->highest_to_commit_vs = to_commit;
+        comp->highest_to_commit_vs->view_id = 1;
+        comp->highest_to_commit_vs->req_id = 0;
 
-        if(!build_log_ret){
-            char* con_log_path = (char*)malloc(sizeof(char)*strlen(log_path) + 50);
-            memset(con_log_path, 0, sizeof(char)*strlen(log_path) + 50);
-            if(NULL != con_log_path){
-                sprintf(con_log_path, "%s/node-%u-consensus.log", log_path, consensus_comp->node_id);
-                consensus_comp->con_log_file = fopen(con_log_path, "w");
-                free(con_log_path);
-            }
-        }
-        consensus_comp->db_ptr = initialize_db(consensus_comp->db_name, 0);
+        pthread_mutex_init(&comp->mutex, NULL);
+
+        goto consensus_init_exit;
+
+    }
+consensus_init_exit:
+    return comp;
 }
 
 static view_stamp get_next_view_stamp(consensus_component* comp){
     view_stamp next_vs;
-    next_vs.view_id = comp->highest_seen_vs.view_id;
-    next_vs.req_id = (comp->highest_seen_vs.req_id + 1);
+    next_vs.view_id = comp->highest_seen_vs->view_id;
+    next_vs.req_id = (comp->highest_seen_vs->req_id+1);
     return next_vs;
 };
 
@@ -78,10 +89,10 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     int ret = 1;
     pthread_mutex_lock(&comp->mutex);
     view_stamp next = get_next_view_stamp(comp);
-    CON_LOG(comp, "Leader trying to reach a consensus on view id %d, req id %d\n", next.view_id, next.req_id);
+    //CON_LOG(comp, "Leader trying to reach a consensus on view id %d, req id %d\n", next.view_id, next.req_id);
 
     /* record the data persistently */
-    db_key_type record_no = vstol(next);
+    db_key_type record_no = vstol(&next);
     request_record* record_data = (request_record*)malloc(data_size + sizeof(request_record));
     gettimeofday(&record_data->created_time, NULL);
     record_data->bit_map = (1<<comp->node_id);
@@ -93,9 +104,15 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     }
     ret = 0;
 
-    comp->highest_seen_vs.req_id = comp->highest_seen_vs.req_id + 1;
+    comp->highest_seen_vs->req_id = comp->highest_seen_vs->req_id + 1;
     uint64_t offset = srv_data.tail;
-    log_entry* new_entry = log_append_entry(comp, data_size, data, &next, srv_data.log_mr, srv_data.tail);
+    log_entry *new_entry = (log_entry*)((char*)srv_data.log_mr + srv_data.tail);
+    new_entry->node_id = comp->node_id;
+    new_entry->req_canbe_exed.view_id = comp->highest_committed_vs->view_id;
+    new_entry->req_canbe_exed.req_id = comp->highest_committed_vs->req_id;
+    new_entry->data_size = data_size;
+    new_entry->msg_vs = next;
+    memcpy(new_entry->data, data, data_size);
     srv_data.tail = srv_data.tail + log_entry_len(new_entry);
 
     for (int i = 0; i < comp->group_size; i++) {
@@ -124,9 +141,9 @@ handle_submit_req_exit:
         free(record_data);
     }
     //TODO: do we need the lock here?
-    while (new_entry->msg_vs.req_id > comp->committed.req_id + 1);
-    comp->committed.req_id = comp->committed.req_id + 1;
-    CON_LOG(comp, "Leader finished the consensus on view id %d, req id %d\n", next.view_id, next.req_id);
+    while (new_entry->msg_vs.req_id > comp->highest_committed_vs->req_id + 1);
+    comp->highest_committed_vs->req_id = comp->highest_committed_vs->req_id + 1;
+    //CON_LOG(comp, "Leader finished the consensus on view id %d, req id %d\n", next.view_id, next.req_id);
     return ret;
 }
 
@@ -148,24 +165,24 @@ void *handle_accept_req(void* arg)
         if (new_entry->req_canbe_exed.view_id != 0)//TODO atmoic opeartion
         {
             int sock = socket(AF_INET, SOCK_STREAM, 0);
-            connect(sock, (struct sockaddr*)&comp->my_address, sizeof(struct sockaddr_in)); //TODO: why? Broken pipe. Maybe the server closes the socket
-            CON_LOG(comp, "Replica %d handling view id %d req id %d\n", comp->node_id, new_entry->msg_vs.view_id, new_entry->msg_vs.req_id);
-            if(new_entry->msg_vs.view_id < comp->cur_view.view_id){
+            //connect(sock, (struct sockaddr*)&comp->my_node->my_address, sizeof(struct sockaddr_in)); //TODO: why? Broken pipe. Maybe the server closes the socket
+            //CON_LOG(comp, "Replica %d handling view id %d req id %d\n", comp->node_id, new_entry->msg_vs.view_id, new_entry->msg_vs.req_id);
+            if(new_entry->msg_vs.view_id < comp->cur_view->view_id){
                 // TODO
                 //goto reloop;
             }
             // if we this message is not from the current leader
-            if(new_entry->msg_vs.view_id == comp->cur_view.view_id && new_entry->node_id != comp->cur_view.leader_id){
+            if(new_entry->msg_vs.view_id == comp->cur_view->view_id && new_entry->node_id != comp->cur_view->leader_id){
                 // TODO
                 //goto reloop;
             }
 
             // update highest seen request
-            if(view_stamp_comp(new_entry->msg_vs, comp->highest_seen_vs) > 0){
-                comp->highest_seen_vs = new_entry->msg_vs;
+            if(view_stamp_comp(&new_entry->msg_vs, comp->highest_seen_vs) > 0){
+                *(comp->highest_seen_vs) = new_entry->msg_vs;
             }
 
-            db_key_type record_no = vstol(new_entry->msg_vs);
+            db_key_type record_no = vstol(&new_entry->msg_vs);
             request_record* record_data = (request_record*)malloc(new_entry->data_size + sizeof(request_record));
 
             gettimeofday(&record_data->created_time, NULL);
@@ -185,17 +202,17 @@ void *handle_accept_req(void* arg)
             rdma_write(new_entry->node_id, reply, ACCEPT_ACK_SIZE, offset);
 
             free(record_data);
-            if(view_stamp_comp(new_entry->req_canbe_exed, comp->committed) > 0)
+            if(view_stamp_comp(&new_entry->req_canbe_exed, comp->highest_committed_vs) > 0)
             {
-                start = vstol(comp->committed)+1;
-                end = vstol(new_entry->req_canbe_exed);
+                start = vstol(comp->highest_committed_vs)+1;
+                end = vstol(&new_entry->req_canbe_exed);
                 for(index = start; index <= end; index++)
                 {
                     retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&retrieve_data);
                     send(sock, retrieve_data->data, retrieve_data->data_size, 0);
-                    CON_LOG(comp, "Replica %d try to exed view id %d req id %d\n", comp->node_id, ltovs(index).view_id, ltovs(index).req_id);
+                    //CON_LOG(comp, "Replica %d try to exed view id %d req id %d\n", comp->node_id, ltovs(index).view_id, ltovs(index).req_id);
                 }
-                comp->committed = new_entry->req_canbe_exed;
+                *(comp->highest_committed_vs) = new_entry->req_canbe_exed;
             }
         }
     }

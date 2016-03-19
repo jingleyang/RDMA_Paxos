@@ -29,7 +29,7 @@ db* initialize_db(const char* db_name, uint32_t flag){
     char* full_path = NULL;
     if((ret = mkdir(db_dir,S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) != 0){
         if(errno!=EEXIST){
-            con_err_log("DB : Dir Creation Failed\n");
+            err_log("DB : Dir Creation Failed\n");
             goto db_init_return;
         }
     }
@@ -45,7 +45,7 @@ db* initialize_db(const char* db_name, uint32_t flag){
     }
     /* Initialize the DB handle */
     if((ret = db_create(&b_db,dbenv,flag)) != 0){
-        con_err_log("DB : %s.\n", db_strerror(ret));
+        err_log("DB : %s.\n", db_strerror(ret));
         goto db_init_return;
     }
 
@@ -66,13 +66,25 @@ db_init_return:
     return db_ptr;
 }
 
+void close_db(db* db_p,uint32_t mode){
+    if(db_p!=NULL){
+        if(db_p->bdb_ptr!=NULL){
+            db_p->bdb_ptr->close(db_p->bdb_ptr,mode);
+            db_p->bdb_ptr=NULL;
+        }
+        free(db_p);
+        db_p = NULL;
+    }
+    return;
+}
+
 int retrieve_record(db* db_p, size_t key_size, void* key_data, size_t* data_size, void** data){
     int ret = 1;
     if(NULL == db_p || NULL == db_p->bdb_ptr){
         if(db_p == NULL){
-          con_err_log("DB retrieve_record : db_p is null.\n");
+          err_log("DB retrieve_record : db_p is null.\n");
         } else{
-          con_err_log("DB retrieve_record : db_p->bdb_ptr is null.\n");
+          err_log("DB retrieve_record : db_p->bdb_ptr is null.\n");
         }
         goto db_retrieve_return;
     }
@@ -85,7 +97,7 @@ int retrieve_record(db* db_p, size_t key_size, void* key_data, size_t* data_size
     db_data.flags = DB_DBT_MALLOC;
     if((ret = b_db->get(b_db, NULL, &key, &db_data, 0)) == 0){
     }else{
-        con_err_log("DB : %s.\n", db_strerror(ret));
+        err_log("DB : %s.\n", db_strerror(ret));
         goto db_retrieve_return;
     }
     if(!db_data.size){
@@ -101,9 +113,9 @@ int store_record(db* db_p, size_t key_size, void* key_data, size_t data_size, vo
     int ret = 1;
     if((NULL == db_p)||(NULL == db_p->bdb_ptr)){
         if(db_p == NULL){
-          con_err_log("DB store_record : db_p is null.\n");
+          err_log("DB store_record : db_p is null.\n");
         } else{
-          con_err_log("DB store_recor : db_p->bdb_ptr is null.\n");
+          err_log("DB store_recor : db_p->bdb_ptr is null.\n");
         }
         goto db_store_return;
     }
@@ -118,7 +130,7 @@ int store_record(db* db_p, size_t key_size, void* key_data, size_t data_size, vo
     if ((ret = b_db->put(b_db,NULL,&key,&db_data,DB_AUTO_COMMIT)) == 0){
     }
     else{
-        con_err_log("DB : %s.\n", db_strerror(ret));
+        err_log("DB : %s.\n", db_strerror(ret));
     }
 db_store_return:
     return ret;

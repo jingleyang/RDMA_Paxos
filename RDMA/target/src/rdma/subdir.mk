@@ -4,11 +4,11 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
-../src/rdma/init_rdma.c \
+../src/rdma/rdma.c \
 ../src/rdma/rdma_common.c 
 
 OBJS += \
-./src/rdma/init_rdma.o \
+./src/rdma/rdma.o \
 ./src/rdma/rdma_common.o
 
 

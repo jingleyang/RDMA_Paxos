@@ -11,10 +11,10 @@ RM := rm -rf
 -include src/util/subdir.mk
 -include src/db/subdir.mk
 -include src/consensus/subdir.mk
--include src/log/subdir.mk
+-include src/replica-sys/subdir.mk
+-include src/proxy/subdir.mk
 -include src/config-comp/subdir.mk
 -include src/rdma/subdir.mk
--include src/zookeeper/subdir.mk
 -include src/subdir.mk
 -include subdir.mk
 -include objects.mk

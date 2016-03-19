@@ -18,7 +18,6 @@ src \
 src/db \
 src/consensus \
 src/config-comp \
-src/log \
 src/rdma \
-src/zookeeper \
-
+src/replica-sys \
+src/proxy \
