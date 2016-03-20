@@ -30,11 +30,11 @@ struct consensus_component_t{ con_role my_role;
 
     db* db_ptr;
     
-    pthread_mutex_t mutex;
+    pthread_mutex_t* lock;
 };
 typedef struct consensus_component_t consensus_component; 
 
-consensus_component* init_consensus_comp(struct node_t*,struct sockaddr_in,uint32_t,FILE*,int,int,
+consensus_component* init_consensus_comp(struct node_t*,struct sockaddr_in,pthread_mutex_t*,uint32_t,FILE*,int,int,
         const char*,void*,int,
         view*,view_stamp*,view_stamp*,view_stamp*,void*);
 

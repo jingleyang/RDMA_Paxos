@@ -21,7 +21,7 @@ static struct ibv_send_wr server_send_wr, *bad_server_send_wr = NULL;
 static struct ibv_sge client_recv_sge, client_send_sge, server_recv_sge, server_send_sge;
 
 static node_id_t myid;
-dare_server_data_t srv_data;
+ib_device srv_data;
 
 static int client_prepare_connection(struct sockaddr_in *s_addr)
 {

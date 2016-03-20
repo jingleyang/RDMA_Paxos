@@ -6,13 +6,27 @@
 #include <zookeeper.h>
 
 #include <sys/stat.h>
-/*
+
 static zhandle_t *zh;
 static int is_connected;
 
+struct znodes_data
+{
+    uint32_t node_id;
+    uint32_t tail;
+};
+
+struct watcherContext
+{
+    uint32_t node_id;
+    pthread_mutex_t *lock;
+    char znode_path[64];
+    view* cur_view;
+};
+
 #define ZDATALEN 1024 * 1024
 
-static void get_znode_name(const char *pathbuf, char *znode_name)
+static void get_znode_path(const char *pathbuf, char *znode_path)
 {
     const char *p = pathbuf;
     int i;
@@ -23,8 +37,8 @@ static void get_znode_name(const char *pathbuf, char *znode_name)
             break;
         }
     }
-    strcpy(znode_name, "/election/");
-    strcat(znode_name, p + i + 1);
+    strcpy(znode_path, "/election/");
+    strcat(znode_path, p + i + 1);
 }
 
 void zookeeper_init_watcher(zhandle_t *izh, int type, int state, const char *path, void *context)
@@ -41,18 +55,13 @@ void zookeeper_init_watcher(zhandle_t *izh, int type, int state, const char *pat
     }
 }
 
-uint32_t comp_tail(const void *a, const void *b)
-{
-    return *(uint32_t*)b-*(uint32_t*)a;
-}
-
-static int check_leader(consensus_component* consensus_comp)
+static int check_leader(view* cur_view, uint32_t node_id, char *znode_path)
 {
     int rc, i, zoo_data_len = ZDATALEN;
     char str[512];
     
-    sprintf(str, "%"PRId64",%"PRIu32"", consensus_comp->node_id, srv_data.tail);
-    rc = zoo_set(zh, consensus_comp->znode_name, str, strlen(str), -1);
+    sprintf(str, "%"PRIu32",%"PRIu32"", node_id, srv_data.tail);
+    rc = zoo_set(zh, znode_path, str, strlen(str), -1);
     if (rc)
     {
         fprintf(stderr, "Error %d for zoo_set\n", rc);
@@ -63,61 +72,49 @@ static int check_leader(consensus_component* consensus_comp)
     {
         fprintf(stderr, "Error %d for zoo_get_children\n", rc);
     }
-
     char *p;
-    //znodes_data *znodes = (znodes_data*)malloc(sizeof(znodes_data) * MAX_SERVER_COUNT);
-    int64_t znodes_ctime[MAX_SERVER_COUNT];
-    uint32_t znodes_tail[MAX_SERVER_COUNT];
-    node_id_t znodes_nid[MAX_SERVER_COUNT];
+    struct znodes_data *znodes = (struct znodes_data*)malloc(sizeof(struct znodes_data) * MAX_SERVER_COUNT);
+
     for (i = 0; i < children_list->count; ++i)
     {
-        struct Stat stat;
         char *zoo_data = malloc(ZDATALEN * sizeof(char));
-        char temp_znode_name[512];
-        get_znode_name(children_list->data[i], temp_znode_name);
-
-        rc = zoo_get(zh, temp_znode_name, 0, zoo_data, &zoo_data_len, &stat);
+        char zpath[512];
+        get_znode_path(children_list->data[i], zpath);
+        rc = zoo_get(zh, zpath, 0, zoo_data, &zoo_data_len, NULL);
         if (rc)
         {
             fprintf(stderr, "Error %d for zoo_get\n", rc);
         }
         p = strtok(zoo_data, ",");
-        znodes_nid[i] = atoi(p);
+        znodes[i].node_id = atoi(p);
         p = strtok(NULL, ",");
-        znodes_tail[i] = atoi(p);
-        znodes_ctime[i] = stat.ctime; // milliseconds
+        znodes[i].tail = atoi(p);
         free(zoo_data);
     }
     
-    qsort(znodes_tail, children_list->count, sizeof(uint32_t), comp_tail);
-    uint32_t max_tail = znodes_tail[0];
-
-    qsort(znodes_ctime, children_list, sizeof(int64_t), comp_ctime);
-    uint32_t max_c_time = znodes_ctime[0];
-
-    for (i = 0; i < children_list->count; ++i)
+    uint32_t max_tail = znodes[0].tail;
+    for (i = 1; i < children_list->count; ++i)
     {
-        if (znodes[i].c_time == max_c_time && znodes[i].tail == max_tail)
+        if (max_tail < znodes[i].tail)
         {
-            consensus_comp->cur_view.leader_id = znodes[i].node_id;
-            break;
+            max_tail = znodes[i].tail;
         }
     }
 
-    if (consensus_comp->cur_view.leader_id == consensus_comp->node_id)
+    for (i = 0; i < children_list->count; ++i)
     {
-        consensus_comp->my_role = LEADER;
-        //fprintf(stderr, "I am the leader\n");
-        for (i = 0; i < children_list->count - 1; ++i)
+        if (znodes[i].tail == max_tail)
         {
-            if (znodes[i].tail != znodes[i + 1].tail)
-            {
-                //recheck
-            }
+            cur_view->leader_id = znodes[i].node_id;
         }
+    }
+
+    if (cur_view->leader_id == node_id)
+    {
+        fprintf(stderr, "I am the leader\n");
+        //recheck
     }else{
-        consensus_comp->my_role = SECONDARY;
-        //fprintf(stderr, "I am a follower\n");
+        fprintf(stderr, "I am a follower\n");
         // RDMA read
         // update view
         // zoo_set
@@ -129,63 +126,64 @@ static int check_leader(consensus_component* consensus_comp)
 void zoo_wget_children_watcher(zhandle_t *wzh, int type, int state, const char *path, void *watcherCtx) {
     if (type == ZOO_CHILD_EVENT)
     {
-        // a change as occurred in the list of children.
         int rc;
-        consensus_component* consensus_comp = (consensus_component*)watcherCtx;
+        struct watcherContext *watcherPara = (struct watcherContext*)watcherCtx;
         // block the threads
-        rc = zoo_wget_children(wzh, "/election", zoo_wget_children_watcher, watcherCtx, NULL);
+        pthread_mutex_lock(watcherPara->lock);
+        rc = zoo_wget_children(zh, "/election", zoo_wget_children_watcher, watcherCtx, NULL);
         if (rc)
         {
             fprintf(stderr, "Error %d for zoo_wget_children\n", rc);
         }
-        check_leader(consensus_comp);   
+        check_leader(watcherPara->cur_view, watcherPara->node_id, watcherPara->znode_path);
+        pthread_mutex_unlock(watcherPara->lock); 
     }
 }
 
-int init_zookeeper()
+int start_zookeeper(int zoo_port, view* cur_view, node_id_t node_id, int *zfd, pthread_mutex_t *lock)
 {
-    srv_data.tail = 0;
-    int rc;
-    char path_buffer[512];
-    zh = zookeeper_init(consensus_comp->zoo_host_port, zookeeper_init_watcher, 15000, 0, 0, 0);
+	int rc;
+	char zoo_host_port[32];
+	sprintf(zoo_host_port, "localhost:%d", zoo_port);
+	zh = zookeeper_init(zoo_host_port, zookeeper_init_watcher, 15000, 0, 0, 0);
 
     while(is_connected != 1);
     int interest, fd;
     struct timeval tv;
     zookeeper_interest(zh, &fd, &interest, &tv);
-    consensus_comp->zfd = fd;
+    *zfd = fd;
 
+    char path_buffer[512];
     rc = zoo_create(zh, "/election/guid-n_", NULL, 0, &ZOO_OPEN_ACL_UNSAFE, ZOO_SEQUENCE|ZOO_EPHEMERAL, path_buffer, 512);
     if (rc)
     {
         fprintf(stderr, "Error %d for zoo_create\n", rc);
     }
+    char znode_path[512];
+    get_znode_path(path_buffer, znode_path);
 
-    char znode_name[512];
-    get_znode_name(path_buffer, znode_name);
-    consensus_comp->znode_name = (char*)malloc(strlen(znode_name));
-    strcpy(consensus_comp->znode_name, znode_name);
-    //check_leader(consensus_comp);
-    if ()
-    {
-        
-    }
+    check_leader(cur_view, node_id, path_buffer);
+    struct watcherContext watcherPara;
+    strcpy(watcherPara.znode_path, znode_path);
+    watcherPara.node_id = node_id;
+    watcherPara.lock = lock;
+    watcherPara.cur_view = cur_view;
 
-    rc = zoo_wget_children(zh, "/election", zoo_wget_children_watcher, (void*)consensus_comp, NULL);
+    rc = zoo_wget_children(zh, "/election", zoo_wget_children_watcher, &watcherPara, NULL);
     if (rc)
     {
         fprintf(stderr, "Error %d for zoo_wget_children\n", rc);
     }
     return 0;
 }
-*/
+
 int initialize_node(node* my_node,const char* log_path, void* db_ptr,void* arg){
 
     int flag = 1;
-    if(my_node->cur_view.leader_id==my_node->node_id){
-        // zookeeper
-    } else{
-    }
+
+    my_node->cur_view.view_id = 1;
+    my_node->cur_view.req_id = 0;
+    start_zookeeper(my_node->zoo_port, &my_node->cur_view, my_node->node_id, &my_node->zfd, &my_node->lock);
 
     int build_log_ret = 0;
     if(log_path==NULL){
@@ -221,7 +219,7 @@ int initialize_node(node* my_node,const char* log_path, void* db_ptr,void* arg){
     
     my_node->consensus_comp = NULL;
 
-    my_node->consensus_comp = init_consensus_comp(my_node,my_node->my_address,
+    my_node->consensus_comp = init_consensus_comp(my_node,my_node->my_address,&my_node->lock,
             my_node->node_id,my_node->sys_log_file,my_node->sys_log,
             my_node->stat_log,my_node->db_name,db_ptr,my_node->group_size,
             &my_node->cur_view,&my_node->highest_to_commit,&my_node->highest_committed,
@@ -235,7 +233,7 @@ initialize_node_exit:
     return flag;
 }
 
-node* system_initialize(node_id_t node_id, const char* start_mode,const char* config_path, const char* log_path, void* db_ptr,void* arg){
+node* system_initialize(node_id_t node_id,const char* config_path, const char* log_path, void* db_ptr,void* arg){
 
     node* my_node = (node*)malloc(sizeof(node));
     memset(my_node,0,sizeof(node));
@@ -246,14 +244,9 @@ node* system_initialize(node_id_t node_id, const char* start_mode,const char* co
     my_node->node_id = node_id;
     my_node->db_ptr = db_ptr;
 
-    if(*start_mode=='s'){
-        my_node->cur_view.view_id = 1;
-        my_node->cur_view.leader_id = my_node->node_id;
-        my_node->cur_view.req_id = 0;
-    }else{
-        my_node->cur_view.view_id = 0;
-        my_node->cur_view.leader_id = 9999;
-        my_node->cur_view.req_id = 0;
+    if(pthread_mutex_init(&my_node->lock,NULL)){
+        err_log("CONSENSUS MODULE : Cannot Init The Lock.\n");
+        goto exit_error;
     }
 
     if(consensus_read_config(my_node,config_path)){

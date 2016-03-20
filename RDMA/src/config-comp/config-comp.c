@@ -95,23 +95,14 @@ int consensus_read_config(node* cur_node,const char* config_path){
         goto goto_config_error;
     }
 
-    const char* peer_ipaddr=NULL;
     int peer_port=-1;
-    if(!config_setting_lookup_string(zoo_ele,"ip_address",&peer_ipaddr)){
-        err_log("CONSENSUS : Cannot Find Current Node's IP Address.\n")
-        goto goto_config_error;
-    }
 
     if(!config_setting_lookup_int(zoo_ele,"port",&peer_port)){
         err_log("CONSENSUS : Cannot Find Current Node's Port.\n")
         goto goto_config_error;
     }
 
-    char *port, str[16];
-    sprintf(str, ":%d", peer_port);
-    port = str;
-    cur_node->zoo_host_port = (char*)malloc(strlen(peer_ipaddr) + strlen(port) + 1);
-    sprintf(cur_node->zoo_host_port, "%s%s", peer_ipaddr, port);    
+    cur_node->zoo_port = peer_port;  
 
     config_setting_t *server_config;
     server_config = config_lookup(&config_file,"server_config");
@@ -127,7 +118,7 @@ int consensus_read_config(node* cur_node,const char* config_path){
         goto goto_config_error;
     }
 
-    peer_ipaddr=NULL;
+    const char* peer_ipaddr=NULL;
     peer_port=-1;
     if(!config_setting_lookup_string(serv_ele,"ip_address",&peer_ipaddr)){
         goto goto_config_error;

@@ -31,7 +31,7 @@ struct __attribute((packed)) rdma_buffer_attr {
 	uint32_t buf_rkey;
 };
 
-struct dare_server_data_t {
+struct ib_device_t {
   uint32_t tail;
   struct rdma_buffer_attr metadata_attr[MAX_SERVER_COUNT];
   void *log_mr;
@@ -41,9 +41,9 @@ struct dare_server_data_t {
   uint32_t rc_max_inline_data;
   int req_num[MAX_SERVER_COUNT];
 };
-typedef struct dare_server_data_t dare_server_data_t;
+typedef struct ib_device_t ib_device;
 
-extern dare_server_data_t srv_data;
+extern ib_device srv_data;
 
 int get_addr(char *dst, struct sockaddr *addr);
 

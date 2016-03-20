@@ -37,11 +37,12 @@ struct node_t{
     db* db_ptr;
     FILE* sys_log_file;
 
-    char *zoo_host_port;
-    
+    int zoo_port;
+    int zfd;
+    pthread_mutex_t lock;
 };
 typedef struct node_t node;
 
-node* system_initialize(int64_t node_id,const char* start_mode,const char* config_path,const char* log_path,void* db_ptr,void* arg);
+node* system_initialize(int64_t node_id,const char* config_path,const char* log_path,void* db_ptr,void* arg);
 
 #endif
