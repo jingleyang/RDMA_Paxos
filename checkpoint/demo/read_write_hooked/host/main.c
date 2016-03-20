@@ -13,10 +13,11 @@ int main(int argc, char ** argv){
         printf("open %s failed for writing\n",fname);
         exit(1); 
     }
-    char* buff="This is a test log";
+    char* buff="This is a test log\n";
     int buff_size = strlen(buff);
     int nwrite = write(fd,buff,buff_size);
     printf("[write_API] write %d bytes\n",nwrite);
+    fsync(fd);
     close(fd);
     //
     fd = open(fname,O_RDONLY);

@@ -1,2 +1,3 @@
 all:
-	gcc -g -O0 -fPIC -shared -ldl -D_GNU_SOURCE -o hooked.so hooked.c 
+	gcc -shared -fPIC  hooked.c -g -O0 -ldl -o hooked.so 
+

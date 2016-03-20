@@ -1,4 +1,4 @@
 #!/bin/sh
-
-env LD_PRELOAD="../hooked/hooked.so" ../host/test
+set -x
+LD_PRELOAD="../hooked/hooked.so" ../host/test
 
