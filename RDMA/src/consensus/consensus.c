@@ -26,7 +26,7 @@ typedef struct request_record_t{
 }__attribute__((packed))request_record;
 #define REQ_RECORD_SIZE(M) (sizeof(request_record)+(M->data_size))
 
-consensus_component* init_consensus_comp(struct node_t* node,struct sockaddr_in my_address,uint32_t node_id, FILE* log, int sys_log,int stat_log,const char* db_name,void* db_ptr,int group_size,
+consensus_component* init_consensus_comp(struct node_t* node,struct sockaddr_in my_address,pthread_mutex_t* lock,uint32_t node_id, FILE* log, int sys_log,int stat_log,const char* db_name,void* db_ptr,int group_size,
         view* cur_view,view_stamp* to_commit,view_stamp* highest_committed_vs,view_stamp* highest,void* arg){
     consensus_component* comp = (consensus_component*)malloc(sizeof(consensus_component));
     memset(comp,0,sizeof(consensus_component));
@@ -55,8 +55,7 @@ consensus_component* init_consensus_comp(struct node_t* node,struct sockaddr_in 
         comp->highest_to_commit_vs->view_id = 1;
         comp->highest_to_commit_vs->req_id = 0;
         comp->my_address = my_address;
-
-        pthread_mutex_init(&comp->mutex, NULL);
+        comp->lock = lock;
 
         goto consensus_init_exit;
 
@@ -88,7 +87,7 @@ static int reached_quorum(request_record* record, int group_size){
 
 int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     int ret = 1;
-    pthread_mutex_lock(&comp->mutex);
+    pthread_mutex_lock(comp->lock);
     view_stamp next = get_next_view_stamp(comp);
     SYS_LOG(comp, "Leader trying to reach a consensus on view id %d, req id %d\n", next.view_id, next.req_id);
 
@@ -121,7 +120,7 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
             continue;
         rdma_write(i, new_entry, log_entry_len(new_entry), offset);
     }
-    pthread_mutex_unlock(&comp->mutex);
+    pthread_mutex_unlock(comp->lock);
     
 recheck:
     for (int i = 0; i < MAX_SERVER_COUNT; i++) {

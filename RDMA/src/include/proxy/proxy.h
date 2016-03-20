@@ -30,7 +30,7 @@ typedef struct proxy_node_t{
 #ifdef __cplusplus
 extern "C" {
 #endif
-    proxy_node* proxy_init(node_id_t node_id, const char* start_mode, const char* config_path, const char* log_path);
+    proxy_node* proxy_init(node_id_t node_id, const char* config_path, const char* log_path);
 
 #ifdef __cplusplus
 }
