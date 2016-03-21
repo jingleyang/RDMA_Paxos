@@ -7,14 +7,24 @@
 
 #include <sys/stat.h>
 
+ib_device srv_data;
+
+#define ZDATALEN 1024 * 10
+
 static zhandle_t *zh;
 static int is_connected;
+
+typedef int (*compfn)(const void*, const void*);
 
 struct znodes_data
 {
     uint32_t node_id;
     uint32_t tail;
+    char znode_path[64];
 };
+
+int compare_tail(struct znodes_data *, struct znodes_data *);
+int compare_path(struct znodes_data *, struct znodes_data *);
 
 struct watcherContext
 {
@@ -23,8 +33,6 @@ struct watcherContext
     char znode_path[64];
     view* cur_view;
 };
-
-#define ZDATALEN 1024 * 1024
 
 static void get_znode_path(const char *pathbuf, char *znode_path)
 {
@@ -58,7 +66,7 @@ void zookeeper_init_watcher(zhandle_t *izh, int type, int state, const char *pat
 static int check_leader(view* cur_view, uint32_t node_id, char *znode_path)
 {
     int rc, i, zoo_data_len = ZDATALEN;
-    char str[512];
+    char str[64];
     
     sprintf(str, "%"PRIu32",%"PRIu32"", node_id, srv_data.tail);
     rc = zoo_set(zh, znode_path, str, strlen(str), -1);
@@ -73,41 +81,41 @@ static int check_leader(view* cur_view, uint32_t node_id, char *znode_path)
         fprintf(stderr, "Error %d for zoo_get_children\n", rc);
     }
     char *p;
-    struct znodes_data *znodes = (struct znodes_data*)malloc(sizeof(struct znodes_data) * MAX_SERVER_COUNT);
+    struct znodes_data znodes[MAX_SERVER_COUNT];
 
     for (i = 0; i < children_list->count; ++i)
     {
         char *zoo_data = malloc(ZDATALEN * sizeof(char));
-        char zpath[512];
+        char zpath[64];
         get_znode_path(children_list->data[i], zpath);
         rc = zoo_get(zh, zpath, 0, zoo_data, &zoo_data_len, NULL);
         if (rc)
         {
             fprintf(stderr, "Error %d for zoo_get\n", rc);
         }
-        p = strtok(zoo_data, ",");
-        znodes[i].node_id = atoi(p);
-        p = strtok(NULL, ",");
-        znodes[i].tail = atoi(p);
+        if (*zoo_data == 'n')
+        {
+            znodes[i].node_id = 9999;
+            znodes[i].tail = 0;
+        } else{
+            p = strtok(zoo_data, ",");
+            znodes[i].node_id = atoi(p);
+            p = strtok(NULL, ",");
+            znodes[i].tail = atoi(p);
+        }
+        strcpy(znodes[i].znode_path, zpath);
         free(zoo_data);
     }
-    
-    uint32_t max_tail = znodes[0].tail;
-    for (i = 1; i < children_list->count; ++i)
-    {
-        if (max_tail < znodes[i].tail)
-        {
-            max_tail = znodes[i].tail;
-        }
-    }
+    qsort((void*)&znodes, children_list->count, sizeof(struct znodes_data), (compfn)compare_tail);
 
-    for (i = 0; i < children_list->count; ++i)
+    for (i = 1; i < children_list->count; i++)
     {
-        if (znodes[i].tail == max_tail)
-        {
-            cur_view->leader_id = znodes[i].node_id;
-        }
+        if (znodes[i].tail != znodes[0].tail)
     }
+    int num_max_tail = i;
+    qsort((void*)&znodes, num_max_tail, sizeof(struct znodes_data), (compfn)compare_path);    
+
+    cur_view->leader_id = znodes[0].node_id;
 
     if (cur_view->leader_id == node_id)
     {
@@ -119,8 +127,18 @@ static int check_leader(view* cur_view, uint32_t node_id, char *znode_path)
         // update view
         // zoo_set
     }
-    free(znodes);
+    free(children_list);
     return 0;
+}
+
+int compare_tail(struct znodes_data *elem1, struct znodes_data *elem2)
+{
+    return elem2->tail - elem1->tail;
+}
+
+int compare_path(struct znodes_data *elem1, struct znodes_data *elem2)
+{
+    return strcmp(elem1->znode_path, elem2->znode_path);
 }
 
 void zoo_wget_children_watcher(zhandle_t *wzh, int type, int state, const char *path, void *watcherCtx) {
@@ -154,7 +172,7 @@ int start_zookeeper(int zoo_port, view* cur_view, node_id_t node_id, int *zfd, p
     *zfd = fd;
 
     char path_buffer[512];
-    rc = zoo_create(zh, "/election/guid-n_", NULL, 0, &ZOO_OPEN_ACL_UNSAFE, ZOO_SEQUENCE|ZOO_EPHEMERAL, path_buffer, 512);
+    rc = zoo_create(zh, "/election/guid-n_", NULL, －1, &ZOO_OPEN_ACL_UNSAFE, ZOO_SEQUENCE|ZOO_EPHEMERAL, path_buffer, 512);
     if (rc)
     {
         fprintf(stderr, "Error %d for zoo_create\n", rc);
@@ -163,13 +181,13 @@ int start_zookeeper(int zoo_port, view* cur_view, node_id_t node_id, int *zfd, p
     get_znode_path(path_buffer, znode_path);
 
     check_leader(cur_view, node_id, path_buffer);
-    struct watcherContext watcherPara;
-    strcpy(watcherPara.znode_path, znode_path);
-    watcherPara.node_id = node_id;
-    watcherPara.lock = lock;
-    watcherPara.cur_view = cur_view;
+    struct watcherContext *watcherPara = (struct watcherContext *)malloc(sizeof(struct watcherContext));
+    strcpy(watcherPara->znode_path, znode_path);
+    watcherPara->node_id = node_id;
+    watcherPara->lock = lock;
+    watcherPara->cur_view = cur_view;
 
-    rc = zoo_wget_children(zh, "/election", zoo_wget_children_watcher, &watcherPara, NULL);
+    rc = zoo_wget_children(zh, "/election", zoo_wget_children_watcher, (void*)watcherPara, NULL);
     if (rc)
     {
         fprintf(stderr, "Error %d for zoo_wget_children\n", rc);
@@ -183,6 +201,8 @@ int initialize_node(node* my_node,const char* log_path, void* db_ptr,void* arg){
 
     my_node->cur_view.view_id = 1;
     my_node->cur_view.req_id = 0;
+    my_node->cur_view.leader_id = 9999;
+    srv_data.tail = 0;
     start_zookeeper(my_node->zoo_port, &my_node->cur_view, my_node->node_id, &my_node->zfd, &my_node->lock);
 
     int build_log_ret = 0;
