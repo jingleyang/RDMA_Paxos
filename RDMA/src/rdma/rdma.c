@@ -21,7 +21,6 @@ static struct ibv_send_wr server_send_wr, *bad_server_send_wr = NULL;
 static struct ibv_sge client_recv_sge, client_send_sge, server_recv_sge, server_send_sge;
 
 static node_id_t myid;
-ib_device srv_data;
 
 static int client_prepare_connection(struct sockaddr_in *s_addr)
 {
@@ -440,7 +439,6 @@ static void *event_thread(void *arg)
 	cm_event_channel = rdma_create_event_channel();
 	if (!cm_event_channel) {
 		rdma_error("Creating cm event channel failed with errno : (%d)", -errno);
-		return -errno;
 	}
 	rdma_debug("RDMA CM event channel is created successfully at %p \n", cm_event_channel);
 
