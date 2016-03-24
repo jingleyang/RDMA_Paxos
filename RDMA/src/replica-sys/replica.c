@@ -7,12 +7,12 @@
 
 #include <sys/stat.h>
 
-ib_device srv_data;
-
 #define ZDATALEN 1024 * 10
 
 static zhandle_t *zh;
 static int is_connected;
+static int zoo_port;
+static node_id_t myid;
 
 typedef int (*compfn)(const void*, const void*);
 
@@ -28,7 +28,6 @@ int compare_path(struct znodes_data *, struct znodes_data *);
 
 struct watcherContext
 {
-    uint32_t node_id;
     pthread_mutex_t *lock;
     char znode_path[64];
     view* cur_view;
@@ -63,12 +62,12 @@ void zookeeper_init_watcher(zhandle_t *izh, int type, int state, const char *pat
     }
 }
 
-static int check_leader(view* cur_view, uint32_t node_id, char *znode_path)
+static int check_leader(view* cur_view, char *znode_path, void *udata)
 {
     int rc, i, zoo_data_len = ZDATALEN;
     char str[64];
-    
-    sprintf(str, "%"PRIu32",%"PRIu32"", node_id, srv_data.tail);
+    struct resources *res = (struct resources *)udata;
+    sprintf(str, "%"PRIu32",%"PRIu32"", myid, res->end);
     rc = zoo_set(zh, znode_path, str, strlen(str), -1);
     if (rc)
     {
@@ -117,7 +116,7 @@ static int check_leader(view* cur_view, uint32_t node_id, char *znode_path)
 
     cur_view->leader_id = znodes[0].node_id;
 
-    if (cur_view->leader_id == node_id)
+    if (cur_view->leader_id == myid)
     {
         fprintf(stderr, "I am the leader\n");
         //recheck
@@ -153,12 +152,12 @@ void zoo_wget_children_watcher(zhandle_t *wzh, int type, int state, const char *
         {
             fprintf(stderr, "Error %d for zoo_wget_children\n", rc);
         }
-        check_leader(watcherPara->cur_view, watcherPara->node_id, watcherPara->znode_path);
+        check_leader(watcherPara->cur_view, watcherPara->znode_path, watcherPara->udata);
         pthread_mutex_unlock(watcherPara->lock); 
     }
 }
 
-int start_zookeeper(int zoo_port, view* cur_view, node_id_t node_id, int *zfd, pthread_mutex_t *lock)
+int start_zookeeper(view* cur_view, int *zfd, pthread_mutex_t *lock, void *udata)
 {
 	int rc;
 	char zoo_host_port[32];
@@ -180,12 +179,12 @@ int start_zookeeper(int zoo_port, view* cur_view, node_id_t node_id, int *zfd, p
     char znode_path[512];
     get_znode_path(path_buffer, znode_path);
 
-    check_leader(cur_view, node_id, path_buffer);
+    check_leader(cur_view, path_buffer, udata);
     struct watcherContext *watcherPara = (struct watcherContext *)malloc(sizeof(struct watcherContext));
     strcpy(watcherPara->znode_path, znode_path);
-    watcherPara->node_id = node_id;
     watcherPara->lock = lock;
     watcherPara->cur_view = cur_view;
+    watcherPara->udata = udata;
 
     rc = zoo_wget_children(zh, "/election", zoo_wget_children_watcher, (void*)watcherPara, NULL);
     if (rc)
@@ -197,13 +196,15 @@ int start_zookeeper(int zoo_port, view* cur_view, node_id_t node_id, int *zfd, p
 
 int initialize_node(node* my_node,const char* log_path, void* db_ptr,void* arg){
 
-    int flag = 1;
+    int flag = 1；
+
+    my_node->udata = connect_peers(my_node->peer_pool, my_node->node_id, my_node->group_size);
 
     my_node->cur_view.view_id = 1;
     my_node->cur_view.req_id = 0;
     my_node->cur_view.leader_id = 9999;
-    srv_data.tail = 0;
-    start_zookeeper(my_node->zoo_port, &my_node->cur_view, my_node->node_id, &my_node->zfd, &my_node->lock);
+    zoo_port = my_node->zoo_port;
+    start_zookeeper(&my_node->cur_view, &my_node->zfd, &my_node->lock, my_node->udata);
 
     int build_log_ret = 0;
     if(log_path==NULL){
@@ -229,17 +230,10 @@ int initialize_node(node* my_node,const char* log_path, void* db_ptr,void* arg){
                 err_log("CONSENSUS MODULE : System Log File Cannot Be Created.\n");
             }
     }
-
-    if (my_node->cur_view.leader_id==my_node->node_id)
-    {
-        connect_peers(my_node->peer_pool[my_node->node_id].peer_address, 1, my_node->node_id);
-    } else{
-        connect_peers(my_node->peer_pool[my_node->cur_view.leader_id].peer_address, 0, my_node->node_id);
-    }
     
     my_node->consensus_comp = NULL;
 
-    my_node->consensus_comp = init_consensus_comp(my_node,my_node->my_address,&my_node->lock,
+    my_node->consensus_comp = init_consensus_comp(my_node,my_node->my_address,&my_node->lock,my_node->udata,
             my_node->node_id,my_node->sys_log_file,my_node->sys_log,
             my_node->stat_log,my_node->db_name,db_ptr,my_node->group_size,
             &my_node->cur_view,&my_node->highest_to_commit,&my_node->highest_committed,
@@ -262,6 +256,7 @@ node* system_initialize(node_id_t node_id,const char* config_path, const char* l
     }
 
     my_node->node_id = node_id;
+    myid ＝ node_id;
     my_node->db_ptr = db_ptr;
 
     if(pthread_mutex_init(&my_node->lock,NULL)){

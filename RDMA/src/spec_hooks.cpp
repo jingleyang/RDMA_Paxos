@@ -3,6 +3,7 @@
 #include <dlfcn.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <sys/stat.h>
 #include "include/consensus/consensus.h"
 #include "include/proxy/proxy.h"
 
@@ -121,6 +122,24 @@ extern "C" ssize_t recv(int sockfd, void *buf, size_t len, int flags)
   ssize_t ret = orig_recv(sockfd, buf, len, flags);
 
   if (proxy != NULL && proxy->con_node->zfd != sockfd && proxy->con_node->cur_view.leader_id == proxy->con_node->node_id)
+  {
+    rsm_op(proxy->con_node->consensus_comp, buf, ret);
+  }
+
+  return ret;
+}
+
+extern "C" ssize_t read(int fd, void *buf, size_t count)
+{
+  typedef ssize_t (*orig_read_type)(int, void *, size_t);
+  orig_read_type orig_read;
+  orig_read = (orig_read_type) dlsym(RTLD_NEXT, "read");
+  ssize_t ret = orig_read(fd, buf, count);
+  
+  struct Stat sb;
+  fstat(fd, &sb);
+  
+  if (ret != 0 && (sb.st_mode & S_IFMT) == S_IFSOCK && proxy != NULL && proxy->con_node->zfd != sockfd && proxy->con_node->cur_view.leader_id == proxy->con_node->node_id)
   {
     rsm_op(proxy->con_node->consensus_comp, buf, ret);
   }

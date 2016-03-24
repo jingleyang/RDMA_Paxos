@@ -1,20 +1,10 @@
 #ifndef RDMA_COMMON_H
 #define RDMA_COMMON_H
 
-#include <string.h>
-
-#include <netdb.h>
-#include <arpa/inet.h>
-
-#include <rdma/rdma_cma.h>
 #include <infiniband/verbs.h>
-#include <inttypes.h>
-
 #include "../util/common-header.h"
 
 #define CQ_CAPACITY (16)
-
-#define MAX_SGE (2)
 
 // TODO FIXME this is kind of guessing
 #define Q_DEPTH 64
@@ -22,53 +12,51 @@
 #define S_DEPTH_ 31
 
 #define PAGE_SIZE 4096
-#define LOG_SIZE  1*PAGE_SIZE
+#define LOG_SIZE 5 * PAGE_SIZE
 
-struct __attribute((packed)) rdma_buffer_attr {
-  node_id_t node_id;
-  uint64_t address;
-  uint32_t length;
-	uint32_t buf_rkey;
+struct config_t
+{
+	const char *dev_name;
+	int ib_port;
+	int gid_idx;
+	int64_t node_id;
 };
 
-struct ib_device_t {
-  uint32_t tail;
-  struct rdma_buffer_attr metadata_attr[MAX_SERVER_COUNT];
-  void *log_mr;
-  uint32_t local_key[MAX_SERVER_COUNT];
-  struct ibv_qp *qp[MAX_SERVER_COUNT];
-  struct ibv_cq *cq[MAX_SERVER_COUNT];
-  uint32_t rc_max_inline_data;
-  int req_num[MAX_SERVER_COUNT];
+struct cm_con_data_t
+{
+	int64_t node_id;
+	uint64_t addr;
+	uint32_t rkey;
+	uint32_t qp_num;
+	uint16_t lid;
+	uint8_t gid[16];
+}__attribute__((packed));
+
+struct resources
+{
+	struct ibv_device_attr device_attr;
+	struct ibv_port_attr;
+	struct cm_con_data_t remote_props[MAX_SERVER_COUNT];
+	struct ibv_context *ib_ctx;
+	struct ibv_pd *pd;
+	struct ibv_cq *cq[MAX_SERVER_COUNT];
+	struct ibv_qp *qp[MAX_SERVER_COUNT];
+	struct ibv_mr *mr;
+	char *buf;
+	int sock;
+
+	uint32_t rc_max_inline_data;
+	int req_num[MAX_SERVER_COUNT];
+
+	uint64_t end; /* offset after the last entry */
+    uint64_t tail; /* offset of the last entry
+                      Note: tail + sizeof(last_entry) == end */
 };
-typedef struct ib_device_t ib_device;
-
-extern ib_device srv_data;
-
-int get_addr(char *dst, struct sockaddr *addr);
-
-void show_rdma_buffer_attr(struct rdma_buffer_attr *attr);
-
-int process_rdma_cm_event(struct rdma_event_channel *echannel, enum rdma_cm_event_type expected_event, struct rdma_cm_event **cm_event);
-
-struct ibv_mr* rdma_buffer_alloc(struct ibv_pd *pd, uint32_t length, enum ibv_access_flags permission);
-
-void rdma_buffer_free(struct ibv_mr *mr);
-
-struct ibv_mr *rdma_buffer_register(struct ibv_pd *pd, void *addr, uint32_t length, enum ibv_access_flags permission);
-
-void rdma_buffer_deregister(struct ibv_mr *mr);
-
-int process_work_completion_events(struct ibv_comp_channel *comp_channel, 
-		struct ibv_wc *wc, 
-		int max_wc);
-
-
-void show_rdma_cmid(struct rdma_cm_id *id);
 
 int find_max_inline(struct ibv_context *context, struct ibv_pd *pd, uint32_t *max_inline_arg);
-int rdma_write(uint8_t target, void* buf, uint32_t len, uint32_t offset);
 
-int connect_peers(struct sockaddr_in *server_addr, int is_leader, node_id_t node_id);
+void *connect_peers(peer* peer_pool, int64_t node_id, uint32_t group_size);
+
+int rdma_write(uint8_t target, void *buf, uint32_t len, uint32_t offset, void *udata);
 
 #endif /* RDMA_COMMON_H */

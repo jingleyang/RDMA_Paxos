@@ -40,6 +40,8 @@ struct node_t{
     int zoo_port;
     int zfd;
     pthread_mutex_t lock;
+
+    void* udata;
 };
 typedef struct node_t node;
 
