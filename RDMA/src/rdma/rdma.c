@@ -284,6 +284,7 @@ static int connect_qp(struct resources *res)
 	struct cm_con_data_t tmp_con_data;
 	int rc = 0;
 	union ibv_gid my_gid;
+	memset(&my_gid, 0, sizeof my_gid);
 
 	local_con_data.node_id = htonl(config.node_id);
 	local_con_data.addr = htonll((uintptr_t)res->buf);
