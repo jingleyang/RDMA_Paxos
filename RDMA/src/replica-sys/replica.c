@@ -249,7 +249,7 @@ initialize_node_exit:
     return flag;
 }
 
-node* system_initialize(node_id_t node_id, FILE* config_file, const char* log_path, void* db_ptr,void* arg){
+node* system_initialize(node_id_t node_id,const char* config_path, const char* log_path, void* db_ptr,void* arg){
 
     node* my_node = (node*)malloc(sizeof(node));
     memset(my_node,0,sizeof(node));
@@ -266,7 +266,7 @@ node* system_initialize(node_id_t node_id, FILE* config_file, const char* log_pa
         goto exit_error;
     }
 
-    if(consensus_read_config(my_node,config_file)){
+    if(consensus_read_config(my_node,config_path)){
         err_log("CONSENSUS MODULE : Configuration File Reading Failed.\n");
         goto exit_error;
     }

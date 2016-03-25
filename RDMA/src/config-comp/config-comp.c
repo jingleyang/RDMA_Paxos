@@ -1,10 +1,10 @@
 #include "../include/config-comp/config-comp.h"
 
-int consensus_read_config(node* cur_node,FILE* config_stream){
+int consensus_read_config(node* cur_node,const char* config_path){
     config_t config_file;
     config_init(&config_file);
 
-    if(!config_read(&config_file,config_stream)){
+    if(!config_read_file(&config_file,config_path)){
         goto goto_config_error;
     }
     uint32_t group_size;

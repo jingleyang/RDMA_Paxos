@@ -3,6 +3,6 @@
 
 struct proxy_node_t;
 
-int proxy_read_config(struct proxy_node_t* cur_node,FILE* config_stream);
+int proxy_read_config(struct proxy_node_t* cur_node,const char* config_path);
 
 #endif

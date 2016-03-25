@@ -2,7 +2,7 @@
 #include "../include/config-comp/config-proxy.h"
 #include <sys/stat.h>
 
-proxy_node* proxy_init(node_id_t node_id, FILE* config_file, const char* log_path){
+proxy_node* proxy_init(node_id_t node_id, const char* config_path, const char* log_path){
     
     proxy_node* proxy = (proxy_node*)malloc(sizeof(proxy_node));
 
@@ -15,7 +15,7 @@ proxy_node* proxy_init(node_id_t node_id, FILE* config_file, const char* log_pat
 
     proxy->node_id = node_id;
 
-    if(proxy_read_config(proxy,config_file)){
+    if(proxy_read_config(proxy,config_path)){
         err_log("PROXY : Configuration File Reading Error.\n");
         goto proxy_exit_error;
     }
@@ -63,7 +63,7 @@ proxy_node* proxy_init(node_id_t node_id, FILE* config_file, const char* log_pat
         goto proxy_exit_error;
     }
     
-    proxy->con_node = system_initialize(node_id,config_file,log_path,proxy->db_ptr,proxy);
+    proxy->con_node = system_initialize(node_id,config_path,log_path,proxy->db_ptr,proxy);
 
     if(NULL==proxy->con_node){
         err_log("PROXY : Cannot Initialize Consensus Component.\n");

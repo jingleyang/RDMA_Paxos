@@ -2,11 +2,11 @@
 #include "../include/proxy/proxy.h"
 #include <libconfig.h>
 
-int proxy_read_config(struct proxy_node_t* cur_node,FILE* config_stream){
+int proxy_read_config(struct proxy_node_t* cur_node,const char* config_path){
     config_t config_file;
     config_init(&config_file);
 
-    if(!config_read(&config_file,config_stream)){
+    if(!config_read_file(&config_file,config_path)){
         goto goto_config_error;
     }
     

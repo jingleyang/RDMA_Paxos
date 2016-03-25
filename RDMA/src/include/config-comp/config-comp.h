@@ -4,6 +4,6 @@
 #include "../replica-sys/node.h"
 #include <libconfig.h>
 
-int consensus_read_config(node* cur_node,FILE* config_stream);
+int consensus_read_config(node* cur_node,const char* config_file);
 
 #endif
