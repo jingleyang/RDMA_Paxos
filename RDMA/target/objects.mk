@@ -1,2 +1,1 @@
-LIBS := -ldb -lconfig -lsupc++ -lpthread -lstdc++ -lrt -libverbs -lrdmacm
-
+LIBS := -lsupc++ -lpthread -lstdc++ -lrt -L"$(ROOT_DIR)/../.local/lib" -ldb -lconfig -L/usr/local/lib -lzookeeper_mt -L/usr/local/ofed/lib64 -L/usr/local/ofed/lib -libverbs

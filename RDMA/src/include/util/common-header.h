@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <assert.h>
-#include <getopt.h>
+#include <inttypes.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <error.h>
@@ -18,7 +18,6 @@
 #include <sys/time.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <sys/shm.h>
 #include "common-structure.h"
 #include "debug.h"
 

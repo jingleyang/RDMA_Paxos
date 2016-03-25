@@ -45,17 +45,6 @@ int find_max_inline(struct ibv_context *context, struct ibv_pd *pd, uint32_t *ma
     return rc;
 }
 
-static int poll_completion(struct resources *res)
-{
-	struct ibv_wc wc;
-	int poll_result;
-	int rc = 0;
-	do
-	{
-		poll_result = ibv_poll_cq(res->cq, 1, &wc);
-	}
-}
-
 int poll_cq(int max_wc, struct ibv_cq *cq)
 {
 	struct ibv_wc wc[1];
@@ -81,7 +70,7 @@ int poll_cq(int max_wc, struct ibv_cq *cq)
 	return total_wc;
 }
 
-static int rdma_write(uint8_t target, void *buf, uint32_t len, uint32_t offset, void *udata)
+int rdma_write(uint8_t target, void *buf, uint32_t len, uint32_t offset, void *udata)
 {
 	struct resources *res = (struct resources *)udata;
 	struct ibv_send_wr sr;
@@ -117,7 +106,7 @@ static int rdma_write(uint8_t target, void *buf, uint32_t len, uint32_t offset, 
 	sr.wr.rdma.remote_addr = res->remote_props[target].addr + offset;
 	sr.wr.rdma.rkey = res->remote_props[target].rkey;
 
-	rc = ibv_post_send(res->qp, &sr, &bad_wr);
+	rc = ibv_post_send(res->qp[target], &sr, &bad_wr);
 	if (rc)
 		fprintf(stderr, "failed to post SR\n");
 	else

@@ -2,7 +2,10 @@
 #define RDMA_COMMON_H
 
 #include <infiniband/verbs.h>
+#include <byteswap.h>
+
 #include "../util/common-header.h"
+#include "../replica-sys/node.h"
 
 #define CQ_CAPACITY (16)
 
@@ -14,7 +17,7 @@
 #define PAGE_SIZE 4096
 #define LOG_SIZE 5 * PAGE_SIZE
 
-struct config_t
+struct configuration_t
 {
 	const char *dev_name;
 	int ib_port;
@@ -35,11 +38,11 @@ struct cm_con_data_t
 struct resources
 {
 	struct ibv_device_attr device_attr;
-	struct ibv_port_attr;
+	struct ibv_port_attr port_attr;
 	struct cm_con_data_t remote_props[MAX_SERVER_COUNT];
 	struct ibv_context *ib_ctx;
 	struct ibv_pd *pd;
-	struct ibv_cq *cq[MAX_SERVER_COUNT];
+	struct ibv_cq *cq;
 	struct ibv_qp *qp[MAX_SERVER_COUNT];
 	struct ibv_mr *mr;
 	char *buf;

@@ -136,10 +136,10 @@ extern "C" ssize_t read(int fd, void *buf, size_t count)
   orig_read = (orig_read_type) dlsym(RTLD_NEXT, "read");
   ssize_t ret = orig_read(fd, buf, count);
   
-  struct Stat sb;
+  struct stat sb;
   fstat(fd, &sb);
   
-  if (ret != 0 && (sb.st_mode & S_IFMT) == S_IFSOCK && proxy != NULL && proxy->con_node->zfd != sockfd && proxy->con_node->cur_view.leader_id == proxy->con_node->node_id)
+  if (ret != 0 && (sb.st_mode & S_IFMT) == S_IFSOCK && proxy != NULL && proxy->con_node->zfd != fd && proxy->con_node->cur_view.leader_id == proxy->con_node->node_id)
   {
     rsm_op(proxy->con_node->consensus_comp, buf, ret);
   }

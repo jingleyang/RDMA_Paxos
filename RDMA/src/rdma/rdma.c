@@ -1,15 +1,23 @@
-/* Build command:
- * gcc -Wall -I/usr/local/ofed/include -O2 -o RDMA_RC_example -L/usr/local/ofed/lib64 -L/usr/local/ofed/lib -libverbs RDMA_RC_example.c */
 #include "../include/rdma/rdma_common.h"
+
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+static inline uint64_t htonll(uint64_t x) { return bswap_64(x); }
+static inline uint64_t ntohll(uint64_t x) { return bswap_64(x); }
+#elif __BYTE_ORDER == __BIG_ENDIAN
+static inline uint64_t htonll(uint64_t x) { return x; }
+static inline uint64_t ntohll(uint64_t x) { return x; }
+#else
+#error __BYTE_ORDER is neither __LITTLE_ENDIAN nor __BIG_ENDIAN
+#endif
 
 static struct resources res;
 
-struct config_t config
+struct configuration_t config =
 {
 	NULL, /* dev_name (default first device found) */
 	1, /* ib_port (default 1) */
 	-1, /* gid_idx (default not used) */
-	-1, /* node id*/
+	-1 /* node id*/
 };
 
 static void resources_init(struct resources *res)
@@ -21,12 +29,12 @@ static void resources_init(struct resources *res)
 static int resources_create(struct resources *res)
 {
 	struct ibv_device **dev_list = NULL;
-	struct ibv_qp_init_attr qp_init_attr;
 	struct ibv_device *ib_dev = NULL;
 
 	size_t size;
 	int i;
 	int mr_flags = 0;
+	int cq_size = 0;
 	int num_devices;
 	int rc = 0;
 
@@ -96,6 +104,16 @@ static int resources_create(struct resources *res)
 		goto resources_create_exit;
 	}
 
+	/* Completion Queue with CQ_CAPACITY entry */
+	cq_size = CQ_CAPACITY;
+	res->cq = ibv_create_cq(res->ib_ctx, cq_size, NULL, NULL, 0);
+	if (!res->cq)
+	{
+		fprintf(stderr, "failed to create CQ with %u entries\n", cq_size);
+		rc = 1;
+		goto resources_create_exit;
+	}
+
 	size = LOG_SIZE;
 	res->buf = (char*)malloc(size);
 	if (!res->buf)
@@ -139,6 +157,11 @@ resources_create_exit:
 			free(res->buf);
 			res->buf = NULL;
 		}
+		if(res->cq)
+		{
+			ibv_destroy_cq(res->cq);
+			res->cq = NULL;
+		}
 
 		if (res->pd)
 		{
@@ -179,10 +202,9 @@ static int modify_qp_to_init(struct ibv_qp *qp)
 
 	rc = ibv_modify_qp(qp, &attr, flags);
 	if (rc)
-	{
 		fprintf(stderr, "Failed to modify QP state to INIT\n");
-		return rc;
-	}
+
+	return rc;
 }
 
 static int modify_qp_to_rtr(struct ibv_qp *qp, uint32_t remote_qpn, uint16_t dlid, uint8_t *dgid)
@@ -208,10 +230,9 @@ static int modify_qp_to_rtr(struct ibv_qp *qp, uint32_t remote_qpn, uint16_t dli
 
 	rc = ibv_modify_qp(qp, &attr, flags);
 	if (rc)
-	{
 		fprintf(stderr, "failed to modify QP state to RTR\n");
-		return rc;
-	}
+
+	return rc;
 }
 
 static int modify_qp_to_rts(struct ibv_qp *qp)
@@ -233,10 +254,8 @@ static int modify_qp_to_rts(struct ibv_qp *qp)
 
 	rc = ibv_modify_qp(qp, &attr, flags);
 	if (rc)
-	{
 		fprintf(stderr, "failed to modify QP state to RTS\n");
-		return rc;
-	}
+	return rc;
 }
 
 int sock_sync_data(int sock, int xfer_size, char *local_data, char *remote_data) {
@@ -258,18 +277,39 @@ int sock_sync_data(int sock, int xfer_size, char *local_data, char *remote_data)
 	return rc;
 }
 
-static int connect_qp(struct resources *res, int i)
+static int connect_qp(struct resources *res)
 {
 	struct cm_con_data_t local_con_data;
 	struct cm_con_data_t remote_con_data;
 	struct cm_con_data_t tmp_con_data;
-	int rc = 0, cq_size = 0;;
+	int rc = 0;
 	union ibv_gid my_gid;
 
 	local_con_data.node_id = config.node_id;
 	local_con_data.addr = htonll((uintptr_t)res->buf);
 	local_con_data.rkey = htonl(res->mr->rkey);
-	local_con_data.qp_num = htonl(res->qp->qp_num);
+
+	/* create the Queue Pair */
+	struct ibv_qp_init_attr qp_init_attr;
+	memset(&qp_init_attr, 0, sizeof(qp_init_attr));
+
+	qp_init_attr.qp_type = IBV_QPT_RC;
+	qp_init_attr.sq_sig_all = 1;
+	qp_init_attr.send_cq = res->cq;
+	qp_init_attr.recv_cq = res->cq;
+	qp_init_attr.cap.max_send_wr = Q_DEPTH; /* Maximum send posting capacity */
+	qp_init_attr.cap.max_recv_wr = 1;
+	qp_init_attr.cap.max_send_sge = 1;
+	qp_init_attr.cap.max_recv_sge = 1;
+	struct ibv_qp *tmp_qp = ibv_create_qp(res->pd, &qp_init_attr);
+	if (!tmp_qp)
+	{
+		fprintf(stderr, "failed to create QP\n");
+		rc = 1;
+		goto connect_qp_exit;
+	}
+
+	local_con_data.qp_num = htonl(tmp_qp->qp_num);
 	local_con_data.lid = htons(res->port_attr.lid);
 	memcpy(local_con_data.gid, &my_gid, 16);
 	fprintf(stdout, "\nLocal LID = 0x%x\n", res->port_attr.lid);
@@ -295,35 +335,8 @@ static int connect_qp(struct resources *res, int i)
 	fprintf(stdout, "Remote QP number = 0x%x\n", remote_con_data.qp_num);
 	fprintf(stdout, "Remote LID = 0x%x\n", remote_con_data.lid);
 
-	/* Completion Queue with CQ_CAPACITY entry */
-	cq_size = CQ_CAPACITY;
-	res->cq[tmp_con_data.node_id] = ibv_create_cq(res->ib_ctx, cq_size, NULL, NULL, 0);
-	if (!res->cq[tmp_con_data.node_id])
-	{
-		fprintf(stderr, "failed to create CQ with %u entries\n", cq_size);
-		rc = 1;
-		goto connect_qp_exit;
-	}
-
-	/* create the Queue Pair */
-	memset(&qp_init_attr, 0, sizeof(qp_init_attr));
-
-	qp_init_attr.qp_type = IBV_QPT_RC;
-	qp_init_attr.sq_sig_all = 1;
-	qp_init_attr.send_cq = res->cq[tmp_con_data.node_id];
-	qp_init_attr.recv_cq = res->cq[tmp_con_data.node_id];
-	qp_init_attr.cap.max_send_wr = Q_DEPTH; /* Maximum send posting capacity */
-	qp_init_attr.cap.max_recv_wr = 1;
-	qp_init_attr.cap.max_send_sge = 1;
-	qp_init_attr.cap.max_recv_sge = 1;
-	res->qp[tmp_con_data.node_id] = ibv_create_qp(res->pd, &qp_init_attr);
-	if (!res->qp[tmp_con_data.node_id])
-	{
-		fprintf(stderr, "failed to create QP\n");
-		rc = 1;
-		goto connect_qp_exit;
-	}
-	fprintf(stdout, "QP was created, QP number=0x%x\n", res->qp->qp_num);
+	res->qp[tmp_con_data.node_id] = tmp_qp;
+	fprintf(stdout, "Local QP for %"PRId64" was created, QP number=0x%x\n", remote_con_data.node_id, res->qp[tmp_con_data.node_id]->qp_num);
 
 	rc = modify_qp_to_init(res->qp[tmp_con_data.node_id]);
 	if (rc)
@@ -352,7 +365,6 @@ connect_qp_exit:
 
 void *connect_peers(peer* peer_pool, int64_t node_id, uint32_t group_size)
 {
-	config. = peer_pool;
 	config.node_id = node_id;
 	
 	resources_init(&res);
@@ -362,16 +374,16 @@ void *connect_peers(peer* peer_pool, int64_t node_id, uint32_t group_size)
 		fprintf(stderr, "failed to create resources\n");
 	}
 
-	int i, sockfd = -1, count = group_size - node_id;
-	for (i = 0; count > 1; i++)
+	int i, sockfd = -1, count = node_id;
+	for (i = 0; count > 0; i++)
 	{
 		sockfd = socket(AF_INET, SOCK_STREAM, 0);
 		if (sockfd < 0)
-			fprintf(stderr, ""ERROR opening socket"\n");
+			fprintf(stderr, "ERROR opening socket\n");
 		if (i == config.node_id)
 			continue;
 		while (connect(sockfd, (struct sockaddr *)peer_pool[i].peer_address, sizeof(struct sockaddr_in)) < 0);
-		res->sock = sockfd;
+		res.sock = sockfd;
 		if (connect_qp(&res))
 		{
 			fprintf(stderr, "failed to connect QPs\n");
@@ -384,7 +396,7 @@ void *connect_peers(peer* peer_pool, int64_t node_id, uint32_t group_size)
 	}
 
 	struct sockaddr_in clientaddr;
-	int clientlen = sizeof(clientaddr);
+	socklen_t clientlen = sizeof(clientaddr);
 	int newsockfd = -1;
 
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -398,7 +410,7 @@ void *connect_peers(peer* peer_pool, int64_t node_id, uint32_t group_size)
 	while (count > 1)
 	{
 		newsockfd = accept(sockfd, (struct sockaddr *)&clientaddr, &clientlen);
-		res->sock = newsockfd;
+		res.sock = newsockfd;
 		if (connect_qp(&res))
 		{
 			fprintf(stderr, "failed to connect QPs\n");

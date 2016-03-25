@@ -28,7 +28,7 @@ all: interpose.so
 interpose.so: $(OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: GCC C Linker'
-	gcc-4.8  -shared -Wl,-soname,interpose.so $(OBJS) -Wall -o interpose.so -L"$(ROOT_DIR)/../.local/lib" $(LIBS) -L/usr/local/lib -lzookeeper_mt
+	gcc-4.8  -shared -Wl,-soname,interpose.so $(OBJS) -Wall -o interpose.so $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 

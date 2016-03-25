@@ -31,6 +31,7 @@ struct watcherContext
     pthread_mutex_t *lock;
     char znode_path[64];
     view* cur_view;
+    void *udata;
 };
 
 static void get_znode_path(const char *pathbuf, char *znode_path)
@@ -67,7 +68,7 @@ static int check_leader(view* cur_view, char *znode_path, void *udata)
     int rc, i, zoo_data_len = ZDATALEN;
     char str[64];
     struct resources *res = (struct resources *)udata;
-    sprintf(str, "%"PRIu32",%"PRIu32"", myid, res->end);
+    sprintf(str, "%"PRId64",%"PRIu64"", myid, res->end);
     rc = zoo_set(zh, znode_path, str, strlen(str), -1);
     if (rc)
     {
@@ -110,6 +111,7 @@ static int check_leader(view* cur_view, char *znode_path, void *udata)
     for (i = 1; i < children_list->count; i++)
     {
         if (znodes[i].tail != znodes[0].tail)
+            continue;
     }
     int num_max_tail = i;
     qsort((void*)&znodes, num_max_tail, sizeof(struct znodes_data), (compfn)compare_path);    
@@ -171,7 +173,7 @@ int start_zookeeper(view* cur_view, int *zfd, pthread_mutex_t *lock, void *udata
     *zfd = fd;
 
     char path_buffer[512];
-    rc = zoo_create(zh, "/election/guid-n_", NULL, －1, &ZOO_OPEN_ACL_UNSAFE, ZOO_SEQUENCE|ZOO_EPHEMERAL, path_buffer, 512);
+    rc = zoo_create(zh, "/election/guid-n_", NULL, -1, &ZOO_OPEN_ACL_UNSAFE, ZOO_SEQUENCE|ZOO_EPHEMERAL, path_buffer, 512);
     if (rc)
     {
         fprintf(stderr, "Error %d for zoo_create\n", rc);
@@ -196,7 +198,7 @@ int start_zookeeper(view* cur_view, int *zfd, pthread_mutex_t *lock, void *udata
 
 int initialize_node(node* my_node,const char* log_path, void* db_ptr,void* arg){
 
-    int flag = 1；
+    int flag = 1;
 
     my_node->udata = connect_peers(my_node->peer_pool, my_node->node_id, my_node->group_size);
 
@@ -256,7 +258,7 @@ node* system_initialize(node_id_t node_id,const char* config_path, const char* l
     }
 
     my_node->node_id = node_id;
-    myid ＝ node_id;
+    myid = node_id;
     my_node->db_ptr = db_ptr;
 
     if(pthread_mutex_init(&my_node->lock,NULL)){
