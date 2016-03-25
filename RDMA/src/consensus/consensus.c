@@ -18,11 +18,6 @@ uint32_t log_entry_len(log_entry* entry)
     return (uint32_t)(sizeof(log_entry) + entry->data_size);
 }
 
-int is_log_empty(struct resources *res)
-{
-    return (res->end == 0);
-}
-
 consensus_component* init_consensus_comp(struct node_t* node,struct sockaddr_in my_address,pthread_mutex_t* lock,void* udata,uint32_t node_id,FILE* log,int sys_log,int stat_log,const char* db_name,void* db_ptr,int group_size,
         view* cur_view,view_stamp* to_commit,view_stamp* highest_committed_vs,view_stamp* highest,void* arg){
     consensus_component* comp = (consensus_component*)malloc(sizeof(consensus_component));
@@ -103,9 +98,8 @@ int rsm_op(struct consensus_component_t* comp, void* data, size_t data_size){
     new_entry->data_size = data_size;
     new_entry->msg_vs = next;
     memcpy(new_entry->data, data, data_size);
+    res->tail = res->end;
     res->end = res->end + log_entry_len(new_entry);
-    if (!is_log_empty(res))
-        res->tail = res->tail + log_entry_len(new_entry);
 
     for (int i = 0; i < comp->group_size; i++) {
         if (i == comp->node_id)
@@ -177,10 +171,9 @@ void *handle_accept_req(void* arg)
             // record the data persistently 
             store_record(comp->db_ptr, sizeof(record_no), &record_no, new_entry->data_size, new_entry->data);
             uint64_t offset = res->end + ACCEPT_ACK_SIZE * comp->node_id;
+            res->tail = res->end;
             res->end = res->end + log_entry_len(new_entry);
-            if (!is_log_empty(res))
-                res->tail = res->tail + log_entry_len(new_entry);
-
+            
             accept_ack* reply = (accept_ack*)((char*)new_entry + ACCEPT_ACK_SIZE * comp->node_id);
             reply->node_id = comp->node_id;
             reply->msg_vs.view_id = new_entry->msg_vs.view_id;
