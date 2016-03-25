@@ -34,11 +34,8 @@ void tern_init_func(int argc, char **argv, char **env){
   proxy = NULL;
   proxy = proxy_init(node_id, config_path, log_dir);
 
-  if (proxy->con_node->cur_view.leader_id != proxy->con_node->node_id)
-  {
-    pthread_t rep_th;
-    pthread_create(&rep_th, NULL, &handle_accept_req, (void*)(proxy->con_node->consensus_comp));
-  }
+  pthread_t rep_th;
+  pthread_create(&rep_th, NULL, &handle_accept_req, (void*)(proxy->con_node->consensus_comp));
 }
 
 typedef void (*fini_type)(void*);
