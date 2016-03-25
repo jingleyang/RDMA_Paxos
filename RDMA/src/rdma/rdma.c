@@ -285,7 +285,7 @@ static int connect_qp(struct resources *res)
 	int rc = 0;
 	union ibv_gid my_gid;
 
-	local_con_data.node_id = config.node_id;
+	local_con_data.node_id = htonl(config.node_id);
 	local_con_data.addr = htonll((uintptr_t)res->buf);
 	local_con_data.rkey = htonl(res->mr->rkey);
 
@@ -325,33 +325,34 @@ static int connect_qp(struct resources *res)
 	remote_con_data.rkey = ntohl(tmp_con_data.rkey);
 	remote_con_data.qp_num = ntohl(tmp_con_data.qp_num);
 	remote_con_data.lid = ntohs(tmp_con_data.lid);
+	remote_con_data.node_id = ntohl(tmp_con_data.node_id);
 	memcpy(remote_con_data.gid, tmp_con_data.gid, 16);
 
-	res->remote_props[tmp_con_data.node_id] = remote_con_data; /* values to connect to remote side */
+	res->remote_props[remote_con_data.node_id] = remote_con_data; /* values to connect to remote side */
 
-	fprintf(stderr, "Node id = %"PRId64":\n", remote_con_data.node_id);
+	fprintf(stderr, "Node id = %"PRIu32"\n", remote_con_data.node_id);
 	fprintf(stdout, "Remote address = 0x%"PRIx64"\n", remote_con_data.addr);
 	fprintf(stdout, "Remote rkey = 0x%x\n", remote_con_data.rkey);
 	fprintf(stdout, "Remote QP number = 0x%x\n", remote_con_data.qp_num);
 	fprintf(stdout, "Remote LID = 0x%x\n", remote_con_data.lid);
 
-	res->qp[tmp_con_data.node_id] = tmp_qp;
-	fprintf(stdout, "Local QP for %"PRId64" was created, QP number=0x%x\n", remote_con_data.node_id, res->qp[tmp_con_data.node_id]->qp_num);
+	res->qp[remote_con_data.node_id] = tmp_qp;
+	fprintf(stdout, "Local QP for %"PRIu32" was created, QP number=0x%x\n", remote_con_data.node_id, res->qp[remote_con_data.node_id]->qp_num);
 
-	rc = modify_qp_to_init(res->qp[tmp_con_data.node_id]);
+	rc = modify_qp_to_init(res->qp[remote_con_data.node_id]);
 	if (rc)
 	{
 		fprintf(stderr, "change QP state to INIT failed\n");
 		goto connect_qp_exit;
 	}
-	rc = modify_qp_to_rtr(res->qp[tmp_con_data.node_id], remote_con_data.qp_num, remote_con_data.lid, remote_con_data.gid);
+	rc = modify_qp_to_rtr(res->qp[remote_con_data.node_id], remote_con_data.qp_num, remote_con_data.lid, remote_con_data.gid);
 	if (rc)
 	{
 		fprintf(stderr, "failed to modify QP state to RTR\n");
 		goto connect_qp_exit;
 	}
 
-	rc = modify_qp_to_rts(res->qp[tmp_con_data.node_id]);
+	rc = modify_qp_to_rts(res->qp[remote_con_data.node_id]);
 	if (rc)
 	{
 		fprintf(stderr, "failed to modify QP state to RTR\n");
@@ -363,7 +364,7 @@ connect_qp_exit:
 	return rc;
 }
 
-void *connect_peers(peer* peer_pool, int64_t node_id, uint32_t group_size)
+void *connect_peers(peer* peer_pool, uint32_t node_id, uint32_t group_size)
 {
 	config.node_id = node_id;
 	

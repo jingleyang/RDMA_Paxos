@@ -30,7 +30,7 @@ void tern_init_func(int argc, char **argv, char **env){
 
   char* log_dir = NULL;
   const char* id = getenv("node_id");
-  int64_t node_id = atoi(id);
+  uint32_t node_id = atoi(id);
   proxy = NULL;
   proxy = proxy_init(node_id, config_path, log_dir);
 

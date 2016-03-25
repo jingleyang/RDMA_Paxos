@@ -1,3 +1,0 @@
-#! /bin/bash
-
-wget http://localhost:7000/test.php

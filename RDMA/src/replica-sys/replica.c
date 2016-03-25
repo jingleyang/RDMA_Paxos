@@ -68,7 +68,7 @@ static int check_leader(view* cur_view, char *znode_path, void *udata)
     int rc, i, zoo_data_len = ZDATALEN;
     char str[64];
     struct resources *res = (struct resources *)udata;
-    sprintf(str, "%"PRId64",%"PRIu64"", myid, res->end);
+    sprintf(str, "%"PRIu32",%"PRIu64"", myid, res->end);
     rc = zoo_set(zh, znode_path, str, strlen(str), -1);
     if (rc)
     {

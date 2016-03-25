@@ -22,12 +22,12 @@ struct configuration_t
 	const char *dev_name;
 	int ib_port;
 	int gid_idx;
-	int64_t node_id;
+	uint32_t node_id;
 };
 
 struct cm_con_data_t
 {
-	int64_t node_id;
+	uint32_t node_id;
 	uint64_t addr;
 	uint32_t rkey;
 	uint32_t qp_num;
@@ -58,7 +58,7 @@ struct resources
 
 int find_max_inline(struct ibv_context *context, struct ibv_pd *pd, uint32_t *max_inline_arg);
 
-void *connect_peers(peer* peer_pool, int64_t node_id, uint32_t group_size);
+void *connect_peers(peer* peer_pool, uint32_t node_id, uint32_t group_size);
 
 int rdma_write(uint8_t target, void *buf, uint32_t len, uint32_t offset, void *udata);
 
