@@ -141,58 +141,61 @@ void *handle_accept_req(void* arg)
     void* retrieve_data = NULL;
 
     struct resources *res = comp->udata;
-    
-    while (1)
+
+    for (;;)
     {
-        log_entry* new_entry = (log_entry*)((char*)res->buf + res->end);
-        
-        if (new_entry->req_canbe_exed.view_id != 0)//TODO atmoic opeartion
-        {
-            int sock = socket(AF_INET, SOCK_STREAM, 0);
-            connect(sock, (struct sockaddr*)&comp->my_address, sizeof(struct sockaddr_in)); //TODO: why? Broken pipe. Maybe the server closes the socket
-            SYS_LOG(comp, "Replica %d handling view id %d req id %d\n", comp->node_id, new_entry->msg_vs.view_id, new_entry->msg_vs.req_id);
-            if(new_entry->msg_vs.view_id < comp->cur_view->view_id){
-                // TODO
-                //goto reloop;
-            }
-            // if we this message is not from the current leader
-            if(new_entry->msg_vs.view_id == comp->cur_view->view_id && new_entry->node_id != comp->cur_view->leader_id){
-                // TODO
-                //goto reloop;
-            }
+    	while(comp->cur_view->leader_id != comp->node_id)
+    	{
+	        log_entry* new_entry = (log_entry*)((char*)res->buf + res->end);
+	        
+	        if (new_entry->req_canbe_exed.view_id != 0)//TODO atmoic opeartion
+	        {
+	            int sock = socket(AF_INET, SOCK_STREAM, 0);
+	            connect(sock, (struct sockaddr*)&comp->my_address, sizeof(struct sockaddr_in)); //TODO: why? Broken pipe. Maybe the server closes the socket
+	            SYS_LOG(comp, "Replica %d handling view id %d req id %d\n", comp->node_id, new_entry->msg_vs.view_id, new_entry->msg_vs.req_id);
+	            if(new_entry->msg_vs.view_id < comp->cur_view->view_id){
+	                // TODO
+	                //goto reloop;
+	            }
+	            // if we this message is not from the current leader
+	            if(new_entry->msg_vs.view_id == comp->cur_view->view_id && new_entry->node_id != comp->cur_view->leader_id){
+	                // TODO
+	                //goto reloop;
+	            }
 
-            // update highest seen request
-            if(view_stamp_comp(&new_entry->msg_vs, comp->highest_seen_vs) > 0){
-                *(comp->highest_seen_vs) = new_entry->msg_vs;
-            }
+	            // update highest seen request
+	            if(view_stamp_comp(&new_entry->msg_vs, comp->highest_seen_vs) > 0){
+	                *(comp->highest_seen_vs) = new_entry->msg_vs;
+	            }
 
-            db_key_type record_no = vstol(&new_entry->msg_vs);
+	            db_key_type record_no = vstol(&new_entry->msg_vs);
 
-            // record the data persistently 
-            store_record(comp->db_ptr, sizeof(record_no), &record_no, new_entry->data_size, new_entry->data);
-            uint64_t offset = res->end + ACCEPT_ACK_SIZE * comp->node_id;
-            res->tail = res->end;
-            res->end = res->end + log_entry_len(new_entry);
-            
-            accept_ack* reply = (accept_ack*)((char*)new_entry + ACCEPT_ACK_SIZE * comp->node_id);
-            reply->node_id = comp->node_id;
-            reply->msg_vs.view_id = new_entry->msg_vs.view_id;
-            reply->msg_vs.req_id = new_entry->msg_vs.req_id;
+	            // record the data persistently 
+	            store_record(comp->db_ptr, sizeof(record_no), &record_no, new_entry->data_size, new_entry->data);
+	            uint64_t offset = res->end + ACCEPT_ACK_SIZE * comp->node_id;
+	            res->tail = res->end;
+	            res->end = res->end + log_entry_len(new_entry);
+	            
+	            accept_ack* reply = (accept_ack*)((char*)new_entry + ACCEPT_ACK_SIZE * comp->node_id);
+	            reply->node_id = comp->node_id;
+	            reply->msg_vs.view_id = new_entry->msg_vs.view_id;
+	            reply->msg_vs.req_id = new_entry->msg_vs.req_id;
 
-            rdma_write(new_entry->node_id, reply, ACCEPT_ACK_SIZE, offset, comp->udata);
+	            rdma_write(new_entry->node_id, reply, ACCEPT_ACK_SIZE, offset, comp->udata);
 
-            if(view_stamp_comp(&new_entry->req_canbe_exed, comp->highest_committed_vs) > 0)
-            {
-                start = vstol(comp->highest_committed_vs)+1;
-                end = vstol(&new_entry->req_canbe_exed);
-                for(index = start; index <= end; index++)
-                {
-                    retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&retrieve_data);
-                    send(sock, retrieve_data, data_size, 0);
-                    SYS_LOG(comp, "Replica %d try to exed view id %d req id %d\n", comp->node_id, ltovs(index).view_id, ltovs(index).req_id);
-                }
-                *(comp->highest_committed_vs) = new_entry->req_canbe_exed;
-            }
-        }
+	            if(view_stamp_comp(&new_entry->req_canbe_exed, comp->highest_committed_vs) > 0)
+	            {
+	                start = vstol(comp->highest_committed_vs)+1;
+	                end = vstol(&new_entry->req_canbe_exed);
+	                for(index = start; index <= end; index++)
+	                {
+	                    retrieve_record(comp->db_ptr, sizeof(index), &index, &data_size, (void**)&retrieve_data);
+	                    send(sock, retrieve_data, data_size, 0);
+	                    SYS_LOG(comp, "Replica %d try to exed view id %d req id %d\n", comp->node_id, ltovs(index).view_id, ltovs(index).req_id);
+	                }
+	                *(comp->highest_committed_vs) = new_entry->req_canbe_exed;
+	            }
+	        }
+    	}
     }
 };

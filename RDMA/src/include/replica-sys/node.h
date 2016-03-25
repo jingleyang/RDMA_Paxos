@@ -45,6 +45,6 @@ struct node_t{
 };
 typedef struct node_t node;
 
-node* system_initialize(uint32_t node_id,const char* config_path,const char* log_path,void* db_ptr,void* arg);
+node* system_initialize(uint32_t node_id,FILE* config_file,const char* log_path,void* db_ptr,void* arg);
 
 #endif

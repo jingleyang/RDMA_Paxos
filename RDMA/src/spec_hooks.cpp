@@ -26,19 +26,20 @@ void tern_init_func(int argc, char **argv, char **env){
     saved_init_func(argc, argv, env);
 
   printf("tern_init_func is called\n");
-  char* config_path = "/home/wangcheng/Downloads/RDMA_Paxos-master/RDMA/target/nodes.local.cfg";
+  FILE *config_file = fopen("../../RDMA/target/nodes.local.cfg", "r");
+  if (config_file == NULL)
+  {
+    fprintf(stderr, "Can not open config file\n");
+  }
 
   char* log_dir = NULL;
   const char* id = getenv("node_id");
   uint32_t node_id = atoi(id);
   proxy = NULL;
-  proxy = proxy_init(node_id, config_path, log_dir);
+  proxy = proxy_init(node_id, config_file, log_dir);
 
-  if (proxy->con_node->cur_view.leader_id != proxy->con_node->node_id)
-  {
-    pthread_t rep_th;
-    pthread_create(&rep_th, NULL, &handle_accept_req, (void*)(proxy->con_node->consensus_comp));
-  }
+  pthread_t rep_th;
+  pthread_create(&rep_th, NULL, &handle_accept_req, (void*)(proxy->con_node->consensus_comp));
 }
 
 typedef void (*fini_type)(void*);
