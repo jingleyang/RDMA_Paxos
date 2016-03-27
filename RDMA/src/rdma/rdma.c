@@ -41,7 +41,8 @@ static int resources_create(struct resources *res)
 	dev_list = ibv_get_device_list(&num_devices);
 	if (!dev_list)
 	{
-		fprintf(stderr, "failed to get IB devices list\n"); rc = 1;
+		fprintf(stderr, "failed to get IB devices list\n");
+		rc = 1;
 		goto resources_create_exit;
 	}
 
@@ -356,7 +357,7 @@ static int connect_qp(struct resources *res)
 	rc = modify_qp_to_rts(res->qp[remote_con_data.node_id]);
 	if (rc)
 	{
-		fprintf(stderr, "failed to modify QP state to RTR\n");
+		fprintf(stderr, "failed to modify QP state to RTS\n");
 		goto connect_qp_exit;
 	}
 	fprintf(stdout, "QP state was change to RTS\n");

@@ -26,7 +26,7 @@ void tern_init_func(int argc, char **argv, char **env){
     saved_init_func(argc, argv, env);
 
   printf("tern_init_func is called\n");
-  char* config_path = "/home/wangcheng/Downloads/RDMA_Paxos-master/RDMA/target/nodes.local.cfg";
+  char* config_path = "/home/hkucs/Documents/RDMA/target/nodes.local.cfg";
 
   char* log_dir = NULL;
   const char* id = getenv("node_id");
@@ -99,7 +99,7 @@ extern "C" int __libc_start_main(
 
   saved_fini_func = (fini_type)rtld_fini_func;
 
-  char* target = "mongoose";
+  char* target = "redis";
   if (NULL != strstr(argv[0], target))
   {
     ret = orig_func((void*)my_main, argc, (char**)(&args), (fnptr_type)tern_init_func, (fnptr_type)fini_func, rtld_fini_func, stack_end);
