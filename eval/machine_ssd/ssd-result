@@ -1,0 +1,196 @@
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/dev/zero of=/test.dbf bs=128 count=8M
+8388608+0 records in
+8388608+0 records out
+1073741824 bytes (1.1 GB) copied, 8.93483 s, 120 MB/s
+0.62user 8.30system 0:08.93elapsed 99%CPU (0avgtext+0avgdata 2012maxresident)k
+320inputs+2097152outputs (2major+86minor)pagefaults 0swaps
+
+
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/test.dbf of=/dev/null bs=128
+8388608+0 records in
+8388608+0 records out
+1073741824 bytes (1.1 GB) copied, 2.45393 s, 438 MB/s
+0.30user 2.14system 0:02.45elapsed 99%CPU (0avgtext+0avgdata 2028maxresident)k
+2097472inputs+0outputs (2major+87minor)pagefaults 0swaps
+
+-----------------------------------------------------------------------------------------------------
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/dev/zero of=/test.dbf bs=256 count=4M
+4194304+0 records in
+4194304+0 records out
+1073741824 bytes (1.1 GB) copied, 4.36916 s, 246 MB/s
+0.30user 4.05system 0:04.37elapsed 99%CPU (0avgtext+0avgdata 2024maxresident)k
+112inputs+2097152outputs (1major+88minor)pagefaults 0swaps
+
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/test.dbf of=/dev/null bs=256
+4194304+0 records in
+4194304+0 records out
+1073741824 bytes (1.1 GB) copied, 1.21672 s, 882 MB/s
+0.21user 1.00system 0:01.21elapsed 99%CPU (0avgtext+0avgdata 2060maxresident)k
+0inputs+0outputs (0major+86minor)pagefaults 0swaps
+
+-----------------------------------------------------------------------------------------------------
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/dev/zero of=/test.dbf bs=512 count=2M
+2097152+0 records in
+2097152+0 records out
+1073741824 bytes (1.1 GB) copied, 2.36021 s, 455 MB/s
+0.13user 2.21system 0:02.36elapsed 99%CPU (0avgtext+0avgdata 2020maxresident)k
+0inputs+2097152outputs (0major+87minor)pagefaults 0swaps
+
+hkucs@hkucs-poweredge-r430-1:/$ sudo sh -c "sync && echo 3 > /proc/sys/vm/drop_caches"
+
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/test.dbf of=/dev/null bs=512
+2097152+0 records in
+2097152+0 records out
+1073741824 bytes (1.1 GB) copied, 0.630988 s, 1.7 GB/s
+0.07user 0.55system 0:00.63elapsed 99%CPU (0avgtext+0avgdata 2180maxresident)k
+0inputs+0outputs (0major+92minor)pagefaults 0swaps
+
+hkucs@hkucs-poweredge-r430-1:/$ sudo sh -c "sync && echo 3 > /proc/sys/vm/drop_caches"
+
+------------------------------------------------------------------------------------------------------
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/dev/zero of=/test.dbf bs=1k count=1M
+1048576+0 records in
+1048576+0 records out
+1073741824 bytes (1.1 GB) copied, 1.35444 s, 793 MB/s
+0.07user 1.27system 0:01.35elapsed 99%CPU (0avgtext+0avgdata 2104maxresident)k
+0inputs+2097152outputs (0major+87minor)pagefaults 0swaps
+
+
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/test.dbf of=/dev/null bs=1024
+1048576+0 records in
+1048576+0 records out
+1073741824 bytes (1.1 GB) copied, 0.361097 s, 3.0 GB/s
+0.03user 0.32system 0:00.36elapsed 99%CPU (0avgtext+0avgdata 1996maxresident)k
+0inputs+0outputs (0major+88minor)pagefaults 0swaps
+
+
+--------------------------------------------------------------------------------------------------------
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/dev/zero of=/test.dbf bs=2k count=512k
+524288+0 records in
+524288+0 records out
+1073741824 bytes (1.1 GB) copied, 0.828399 s, 1.3 GB/s
+0.03user 0.79system 0:00.82elapsed 99%CPU (0avgtext+0avgdata 2116maxresident)k
+328inputs+2097152outputs (2major+88minor)pagefaults 0swaps
+
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/test.dbf of=/dev/null bs=2k
+524288+0 records in
+524288+0 records out
+1073741824 bytes (1.1 GB) copied, 0.250368 s, 4.3 GB/s
+0.02user 0.22system 0:00.25elapsed 99%CPU (0avgtext+0avgdata 2100maxresident)k
+0inputs+0outputs (0major+86minor)pagefaults 0swaps
+
+---------------------------------------------------------------------------------------------------------
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/dev/zero of=/test.dbf bs=4k count=256k
+262144+0 records in
+262144+0 records out
+1073741824 bytes (1.1 GB) copied, 0.546605 s, 2.0 GB/s
+0.03user 0.51system 0:00.54elapsed 99%CPU (0avgtext+0avgdata 2064maxresident)k
+112inputs+2097152outputs (1major+89minor)pagefaults 0swaps
+
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/test.dbf of=/dev/null bs=4k
+262144+0 records in
+262144+0 records out
+1073741824 bytes (1.1 GB) copied, 0.181415 s, 5.9 GB/s
+0.01user 0.16system 0:00.18elapsed 100%CPU (0avgtext+0avgdata 1996maxresident)k
+0inputs+0outputs (0major+87minor)pagefaults 0swaps
+
+--------------------------------------------------------------------------------------------------------
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/dev/zero of=/test.dbf bs=8k count=128k
+131072+0 records in
+131072+0 records out
+1073741824 bytes (1.1 GB) copied, 0.50326 s, 2.1 GB/s
+0.01user 0.49system 0:00.50elapsed 99%CPU (0avgtext+0avgdata 2072maxresident)k
+320inputs+2097152outputs (2major+90minor)pagefaults 0swaps
+
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/test.dbf of=/dev/null bs=8k
+131072+0 records in
+131072+0 records out
+1073741824 bytes (1.1 GB) copied, 0.147583 s, 7.3 GB/s
+0.00user 0.14system 0:00.14elapsed 99%CPU (0avgtext+0avgdata 2024maxresident)k
+0inputs+0outputs (0major+88minor)pagefaults 0swaps
+
+----------------------------------------------------------------------------------------------------------
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/dev/zero of=/test.dbf bs=16k count=64k
+65536+0 records in
+65536+0 records out
+1073741824 bytes (1.1 GB) copied, 0.481032 s, 2.2 GB/s
+0.01user 0.46system 0:00.48elapsed 100%CPU (0avgtext+0avgdata 2012maxresident)k
+112inputs+2097152outputs (1major+91minor)pagefaults 0swaps
+
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/test.dbf of=/dev/null bs=16k
+65536+0 records in
+65536+0 records out
+1073741824 bytes (1.1 GB) copied, 0.140146 s, 7.7 GB/s
+0.01user 0.12system 0:00.14elapsed 100%CPU (0avgtext+0avgdata 2024maxresident)k
+0inputs+0outputs (0major+90minor)pagefaults 0swaps
+
+----------------------------------------------------------------------------------------------------------
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/dev/zero of=/test.dbf bs=32k count=32k
+32768+0 records in
+32768+0 records out
+1073741824 bytes (1.1 GB) copied, 0.470733 s, 2.3 GB/s
+0.00user 0.47system 0:00.47elapsed 99%CPU (0avgtext+0avgdata 2020maxresident)k
+320inputs+2097152outputs (2major+94minor)pagefaults 0swaps
+
+
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/test.dbf of=/dev/null bs=32k
+32768+0 records in
+32768+0 records out
+1073741824 bytes (1.1 GB) copied, 0.134042 s, 8.0 GB/s
+0.00user 0.13system 0:00.13elapsed 100%CPU (0avgtext+0avgdata 2032maxresident)k
+0inputs+0outputs (0major+97minor)pagefaults 0swaps
+
+---------------------------------------------------------------------------------------------------------
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/dev/zero of=/test.dbf bs=64k count=16k
+16384+0 records in
+16384+0 records out
+1073741824 bytes (1.1 GB) copied, 0.462762 s, 2.3 GB/s
+0.00user 0.46system 0:00.46elapsed 99%CPU (0avgtext+0avgdata 2236maxresident)k
+320inputs+2097152outputs (2major+104minor)pagefaults 0swaps
+
+
+hkucs@hkucs-poweredge-r430-1:/$ sudo time dd if=/test.dbf of=/dev/null bs=64k
+16384+0 records in
+16384+0 records out
+1073741824 bytes (1.1 GB) copied, 0.132169 s, 8.1 GB/s
+0.00user 0.13system 0:00.13elapsed 100%CPU (0avgtext+0avgdata 2136maxresident)k
+0inputs+0outputs (0major+104minor)pagefaults 0swaps
+
+---------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

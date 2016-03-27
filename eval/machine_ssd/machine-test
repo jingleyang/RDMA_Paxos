@@ -1,0 +1,41 @@
+#!/bin/bash
+#show hard disks of the machine
+df -l
+
+#get block size of hard disk
+sudo tunezfs -l /dev/sda5 | grep -i "block size"
+
+#get page size of memeory
+getconf PAGESIZE
+
+#get sector size of hard disk
+sudo fdisk -l /dev/sda5 | grep -i "Sector size"
+
+TEST_FILE_SIZE=1073741824
+
+for BLOCK_SIZE in 128 256 512 1024 2048 4096 8192 16384 32768 65536
+do
+    COUNT=$(($TEST_FILE_SIZE / $BLOCK_SIZE))
+
+    echo "block size is $BLOCK_SIZE, count is $COUNT"
+
+    #it tests write ability
+    sudo time dd if=/dev/zero of=/test.dbf bs=$BLOCK_SIZE count=$COUNT
+
+    sudo sh -c "sync && echo 3 > /proc/sys/vm/drop_caches"
+
+    #it tests read ability
+    sudo time dd if=/test.dbf of=/dev/null bs=$BLOCK_SIZE
+
+    sudo sh -c "sync && echo 3 > /proc/sys/vm/drop_caches"
+    sudo rm /test.dbf
+
+done
+
+
+
+
+
+
+
+
