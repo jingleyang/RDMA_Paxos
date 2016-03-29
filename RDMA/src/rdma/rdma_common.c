@@ -70,7 +70,7 @@ int poll_cq(int max_wc, struct ibv_cq *cq)
 	return total_wc;
 }
 
-int rdma_write(uint8_t target, void *buf, uint32_t len, uint32_t offset, void *udata)
+int rdma_write(uint8_t target, void *buf, uint32_t len, uint64_t offset, void *udata)
 {
 	struct resources *res = (struct resources *)udata;
 	struct ibv_send_wr sr;
@@ -79,25 +79,21 @@ int rdma_write(uint8_t target, void *buf, uint32_t len, uint32_t offset, void *u
 	int rc;
 
 	memset(&sge, 0, sizeof(sge));
-	sge.addr = (uintptr_t)res->buf;
+	sge.addr   = (uint64_t)buf;
 	sge.length = len;
 	sge.lkey = res->mr->lkey;
 
 	memset(&sr, 0, sizeof(sr));
-	sr.next = NULL;
-	sr.wr_id = 0;
 	sr.sg_list = &sge;
 	sr.num_sge = 1;
 	sr.opcode = IBV_WR_RDMA_WRITE;
 
     if((res->req_num[target] & S_DEPTH_) == 0) {
-    	sr.send_flags = IBV_SEND_SIGNALED; /* Specifying IBV_SEND_SIGNALED in wr.send_flags indicates that we want completion notification for this send request */
-    } else {
-    	sr.send_flags = 0;
+    	sr.send_flags |= IBV_SEND_SIGNALED; /* Specifying IBV_SEND_SIGNALED in wr.send_flags indicates that we want completion notification for this send request */
     }
     if ((res->req_num[target] & S_DEPTH_) == S_DEPTH_)
     {
-    	poll_cq(1, res->cq);
+    	poll_cq(1, res->cq[target]);
     }
 
 	if (len <= res->rc_max_inline_data)
@@ -108,7 +104,7 @@ int rdma_write(uint8_t target, void *buf, uint32_t len, uint32_t offset, void *u
 
 	rc = ibv_post_send(res->qp[target], &sr, &bad_wr);
 	if (rc)
-		fprintf(stderr, "failed to post SR\n");
+		fprintf(stderr, "failed to post SR, rc = %d\n", rc);
 	else
 	{
 		fprintf(stdout, "RDMA Write Request was posted\n");

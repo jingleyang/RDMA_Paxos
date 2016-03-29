@@ -42,7 +42,7 @@ struct resources
 	struct cm_con_data_t remote_props[MAX_SERVER_COUNT];
 	struct ibv_context *ib_ctx;
 	struct ibv_pd *pd;
-	struct ibv_cq *cq;
+	struct ibv_cq *cq[MAX_SERVER_COUNT];
 	struct ibv_qp *qp[MAX_SERVER_COUNT];
 	struct ibv_mr *mr;
 	char *buf;
@@ -60,6 +60,6 @@ int find_max_inline(struct ibv_context *context, struct ibv_pd *pd, uint32_t *ma
 
 void *connect_peers(peer* peer_pool, uint32_t node_id, uint32_t group_size);
 
-int rdma_write(uint8_t target, void *buf, uint32_t len, uint32_t offset, void *udata);
+int rdma_write(uint8_t target, void *buf, uint32_t len, uint64_t offset, void *udata);
 
 #endif /* RDMA_COMMON_H */

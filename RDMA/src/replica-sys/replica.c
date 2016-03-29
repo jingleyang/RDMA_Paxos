@@ -201,6 +201,11 @@ int initialize_node(node* my_node,const char* log_path, void* db_ptr,void* arg){
     int flag = 1;
 
     my_node->udata = connect_peers(my_node->peer_pool, my_node->node_id, my_node->group_size);
+    if (my_node->udata == NULL)
+    {
+        err_log("CONSENSUS MODULE : Failed to connect peers.\n");
+        goto initialize_node_exit;
+    }
 
     my_node->cur_view.view_id = 1;
     my_node->cur_view.req_id = 0;

@@ -34,7 +34,6 @@ static int resources_create(struct resources *res)
 	size_t size;
 	int i;
 	int mr_flags = 0;
-	int cq_size = 0;
 	int num_devices;
 	int rc = 0;
 
@@ -105,16 +104,6 @@ static int resources_create(struct resources *res)
 		goto resources_create_exit;
 	}
 
-	/* Completion Queue with CQ_CAPACITY entry */
-	cq_size = CQ_CAPACITY;
-	res->cq = ibv_create_cq(res->ib_ctx, cq_size, NULL, NULL, 0);
-	if (!res->cq)
-	{
-		fprintf(stderr, "failed to create CQ with %u entries\n", cq_size);
-		rc = 1;
-		goto resources_create_exit;
-	}
-
 	size = LOG_SIZE;
 	res->buf = (char*)malloc(size);
 	if (!res->buf)
@@ -157,11 +146,6 @@ resources_create_exit:
 		{
 			free(res->buf);
 			res->buf = NULL;
-		}
-		if(res->cq)
-		{
-			ibv_destroy_cq(res->cq);
-			res->cq = NULL;
 		}
 
 		if (res->pd)
@@ -227,6 +211,17 @@ static int modify_qp_to_rtr(struct ibv_qp *qp, uint32_t remote_qpn, uint16_t dli
 	attr.ah_attr.sl = 0;
 	attr.ah_attr.src_path_bits = 0;
 	attr.ah_attr.port_num = config.ib_port;
+	if (config.gid_idx >= 0)
+	{
+		attr.ah_attr.is_global = 1;
+		attr.ah_attr.port_num = 1;
+		memcpy(&attr.ah_attr.grh.dgid, dgid, 16);
+		attr.ah_attr.grh.flow_label = 0;
+		attr.ah_attr.grh.hop_limit = 1;
+		attr.ah_attr.grh.sgid_index = config.gid_idx;
+		attr.ah_attr.grh.traffic_class = 0;
+	}
+	
 	flags = IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
 
 	rc = ibv_modify_qp(qp, &attr, flags);
@@ -283,22 +278,44 @@ static int connect_qp(struct resources *res)
 	struct cm_con_data_t local_con_data;
 	struct cm_con_data_t remote_con_data;
 	struct cm_con_data_t tmp_con_data;
-	int rc = 0;
+	int rc = 0, cq_size = 0;
 	union ibv_gid my_gid;
-	memset(&my_gid, 0, sizeof my_gid);
+
+	if (config.gid_idx >= 0)
+	{
+		rc = ibv_query_gid(res->ib_ctx, config.ib_port, config.gid_idx, &my_gid);
+		if (rc)
+		{
+			fprintf(stderr, "could not get gid for port %d, index %d\n", config.ib_port, config.gid_idx);
+			return rc;
+		}
+	}
+	else
+		memset(&my_gid, 0, sizeof my_gid);
 
 	local_con_data.node_id = htonl(config.node_id);
 	local_con_data.addr = htonll((uintptr_t)res->buf);
 	local_con_data.rkey = htonl(res->mr->rkey);
+
+	/* Completion Queue with CQ_CAPACITY entry */
+	cq_size = CQ_CAPACITY;
+	struct ibv_cq * tmp_cq = ibv_create_cq(res->ib_ctx, cq_size, NULL, NULL, 0);
+	if (!tmp_cq)
+	{
+		fprintf(stderr, "failed to create CQ with %u entries\n", cq_size);
+		rc = 1;
+		goto connect_qp_exit;
+	}
 
 	/* create the Queue Pair */
 	struct ibv_qp_init_attr qp_init_attr;
 	memset(&qp_init_attr, 0, sizeof(qp_init_attr));
 
 	qp_init_attr.qp_type = IBV_QPT_RC;
-	qp_init_attr.sq_sig_all = 1;
-	qp_init_attr.send_cq = res->cq;
-	qp_init_attr.recv_cq = res->cq;
+	//qp_init_attr.sq_sig_all = 0;
+	qp_init_attr.send_cq = tmp_cq;
+	qp_init_attr.recv_cq = tmp_cq;
+	qp_init_attr.cap.max_inline_data = res->rc_max_inline_data;
 	qp_init_attr.cap.max_send_wr = Q_DEPTH; /* Maximum send posting capacity */
 	qp_init_attr.cap.max_recv_wr = 1;
 	qp_init_attr.cap.max_send_sge = 1;
@@ -337,8 +354,14 @@ static int connect_qp(struct resources *res)
 	fprintf(stdout, "Remote rkey = 0x%x\n", remote_con_data.rkey);
 	fprintf(stdout, "Remote QP number = 0x%x\n", remote_con_data.qp_num);
 	fprintf(stdout, "Remote LID = 0x%x\n", remote_con_data.lid);
+	if (config.gid_idx >= 0)
+	{
+		uint8_t *p = remote_con_data.gid;
+		fprintf(stdout, "Remote GID = %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x\n\n", p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], p[13], p[14], p[15]);
+	}
 
 	res->qp[remote_con_data.node_id] = tmp_qp;
+	res->cq[remote_con_data.node_id] = tmp_cq;
 	fprintf(stdout, "Local QP for %"PRIu32" was created, QP number=0x%x\n", remote_con_data.node_id, res->qp[remote_con_data.node_id]->qp_num);
 
 	rc = modify_qp_to_init(res->qp[remote_con_data.node_id]);
@@ -366,15 +389,69 @@ connect_qp_exit:
 	return rc;
 }
 
+static int resources_destroy(struct resources *res)
+{
+	int i, rc = 0;
+
+	for (i = 0; i < MAX_SERVER_COUNT; ++i)
+	{
+		if (res->qp[i])
+		{
+			if (ibv_destroy_qp(res->qp[i]))
+			{
+				fprintf(stderr, "failed to destroy QP\n");
+				rc = 1;
+			}
+		}
+	}
+
+	if (res->mr)
+		if (ibv_dereg_mr(res->mr)) {
+			fprintf(stderr, "failed to deregister MR\n");
+			rc = 1;
+		}
+
+	if (res->buf)
+		free(res->buf);
+
+	for (i = 0; i < MAX_SERVER_COUNT; ++i)
+	{
+		if (res->cq[i])
+			if (ibv_destroy_cq(res->cq[i]))
+			{
+				fprintf(stderr, "failed to destroy CQ\n");
+				rc = 1;
+			}
+	}
+
+	if (res->pd)
+		if (ibv_dealloc_pd(res->pd))
+		{
+			fprintf(stderr, "failed to deallocate PD\n");
+			rc = 1;
+		}
+
+	if (res->ib_ctx)
+		if (ibv_close_device(res->ib_ctx))
+		{
+			fprintf(stderr, "failed to close device context\n");
+			rc = 1;
+		}
+
+	return rc;
+}
+
 void *connect_peers(peer* peer_pool, uint32_t node_id, uint32_t group_size)
 {
 	config.node_id = node_id;
+	config.gid_idx = 0;
 	
 	resources_init(&res);
 
 	if (resources_create(&res))
 	{
 		fprintf(stderr, "failed to create resources\n");
+		goto connect_peers_exit;
 	}
 
 	int i, sockfd = -1, count = node_id;
@@ -382,7 +459,10 @@ void *connect_peers(peer* peer_pool, uint32_t node_id, uint32_t group_size)
 	{
 		sockfd = socket(AF_INET, SOCK_STREAM, 0);
 		if (sockfd < 0)
+		{
 			fprintf(stderr, "ERROR opening socket\n");
+			goto connect_peers_exit;
+		}
 		if (i == config.node_id)
 			continue;
 		while (connect(sockfd, (struct sockaddr *)peer_pool[i].peer_address, sizeof(struct sockaddr_in)) < 0);
@@ -390,10 +470,12 @@ void *connect_peers(peer* peer_pool, uint32_t node_id, uint32_t group_size)
 		if (connect_qp(&res))
 		{
 			fprintf(stderr, "failed to connect QPs\n");
+			goto connect_peers_exit;
 		}
 		if (close(sockfd))
 		{
 			fprintf(stderr, "failed to close socket\n");
+			goto connect_peers_exit;
 		}
 		count--;
 	}
@@ -406,6 +488,7 @@ void *connect_peers(peer* peer_pool, uint32_t node_id, uint32_t group_size)
 	if (bind(sockfd, (struct sockaddr *)peer_pool[node_id].peer_address, sizeof(struct sockaddr_in)) < 0)
 	{
 		perror ("ERROR on binding");
+		goto connect_peers_exit;
 	}
 	listen(sockfd, 5);
 
@@ -417,17 +500,30 @@ void *connect_peers(peer* peer_pool, uint32_t node_id, uint32_t group_size)
 		if (connect_qp(&res))
 		{
 			fprintf(stderr, "failed to connect QPs\n");
+			goto connect_peers_exit;
 		}
 		if (close(newsockfd))
 		{
 			fprintf(stderr, "failed to close socket\n");
+			goto connect_peers_exit;
 		}
 		count--;	
 	}
 	if (close(sockfd))
 	{
 		fprintf(stderr, "failed to close socket\n");
+		goto connect_peers_exit;
 	}
 
 	return &res;
+
+connect_peers_exit:
+	if (resources_destroy(&res)) {
+		fprintf(stderr, "failed to destroy resources\n");
+	}
+
+	if(config.dev_name)
+		free((char*)config.dev_name);
+
+	return NULL;
 }
