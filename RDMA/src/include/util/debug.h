@@ -1,6 +1,8 @@
 #ifndef DEBUG_H
 #define DEBUG_H
 
+#include <stdio.h>
+
 #define debug_log(args...) do { \
     struct timeval tv; \
     gettimeofday(&tv,0); \
@@ -31,20 +33,22 @@
 
 #define REQ_LOG(x,args...) {if((x)->req_log){safe_rec_log(((x)->sys_log_file),args)}}
 
-#define rdma_error(msg, args...) do {\
-	fprintf(stderr, "%s : %d : ERROR : "msg, __FILE__, __LINE__, ## args);\
-}while(0);
+#define info(stream, fmt, ...) do {\
+    fprintf(stream, fmt, ##__VA_ARGS__); \
+    fflush(stream); \
+} while(0)
 
-#ifdef ACN_RDMA_DEBUG 
-#define rdma_debug(msg, args...) do {\
-    printf("DEBUG: "msg, ## args);\
-}while(0);
+#define rdma_error(stream, fmt, ...) do { \
+    fprintf(stream, "[ERROR] %s/%d/%s() " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+    fflush(stream); \
+} while(0)
 
-#else 
+#define error_return(rc, stream, fmt, ...) do { \
+    fprintf(stream, "[ERROR] %s/%d/%s() " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+    fflush(stream); \
+    return (rc);  \
+} while(0)
 
-#define rdma_debug(msg, args...) 
-
-#endif /* ACN_RDMA_DEBUG */
-
+extern FILE *log_fp;
 
 #endif

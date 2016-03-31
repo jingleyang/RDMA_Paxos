@@ -4,12 +4,14 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
-../src/rdma/rdma.c \
-../src/rdma/rdma_common.c 
+../src/rdma/dare_ibv.c \
+../src/rdma/dare_ibv_rc.c \
+../src/rdma/dare_server.c
 
 OBJS += \
-./src/rdma/rdma.o \
-./src/rdma/rdma_common.o
+./src/rdma/dare_ibv.o \
+./src/rdma/dare_ibv_rc.o \
+./src/rdma/dare_server.o \
 
 
 # Each subdirectory must supply rules for building sources it contributes
