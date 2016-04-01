@@ -21,9 +21,10 @@ def processOptions(options):
             logging.critical("strange option " + option)
     return hook_option,checkpoint_option,compare_option
 
-#def enableServer(config,bench):
-#    server_program=config.get(bench,'SERVER_PROGRAM') 
-#    server_input=config.get(bench,'SERVER_INPUT')
+def enableServer(config,bench):
+    server_program=config.get(bench,'SERVER_PROGRAM')
+    server_input=config.get(bench,'SERVER_INPUT')
+    
 
 
 
@@ -35,15 +36,31 @@ def processBench(config, bench):
     #print hook_option + check_option + compare_option
     server_count=config.getint(bench,'SERVER_COUNT')
     server_program=config.get(bench,'SERVER_PROGRAM')
-    if len(server_program)!=0
+    #if len(server_program)!=0:
+    
         
     server_input=config.get(bench,'SERVER_INPUT')
     server_kill=config.get(bench,'SERVER_KILL')
     client_program=config.get(bench,'CLIENT_PROGRAM')
     client_input=config.get(bench,'CLIENT_INPUT')
-    os.system(server_program + " " + server_input)
-    os.system(client_program + " " + client_input)
-    os.system(server_kill)
+
+    testname = bench
+    testscript = open(testname,"w")
+    testscript.write('#! /bin/bash\n')
+    testscript.write(server_program + ' ' + server_input +' \n'+
+    'ssh ' + remote_hostone + '  "' + server_program + ' ' + server_input + '" &\n' +
+    'ssh ' + remote_hosttwo + '  "' + server_program + ' ' + server_input + '" &\n' )
+    testscript.write(client_program + ' ' + client_input +'\n')
+    testscript.write(server_kill + '\n' +
+    'ssh ' + remote_hostone + '  "' + server_kill + '"\n' +
+    'ssh ' + remote_hosttwo + '  "' + server_kill + '"\n')
+     
+    testscript.close()
+    os.system('chmod +x '+testname)
+    os.system('./' + testname)
+    #os.system(server_program + " " + server_input)
+    #os.system(client_program + " " + client_input)
+    #os.system(server_kill)
 
 
 
@@ -100,11 +117,11 @@ if __name__ == "__main__":
         sys.exit(1)
     
     try:
-        local_host = os.popen('cat $RDMA_ROOT/apps/env/local_host').readline()
+        local_host = os.popen('cat $RDMA_ROOT/apps/env/local_host').readline().replace("\n","")
         local_host_ip = local_host[local_host.find("@")+1:]
-        remote_hostone = os.popen('cat $RDMA_ROOT/apps/env/remote_host1').readline()
+        remote_hostone = os.popen('cat $RDMA_ROOT/apps/env/remote_host1').readline().replace("\n","")
         remote_hostone_ip = remote_hostone[remote_hostone.find("@")+1:]
-        remote_hosttwo = os.popen('cat $RDMA_ROOT/apps/env/remote_host2').readline()
+        remote_hosttwo = os.popen('cat $RDMA_ROOT/apps/env/remote_host2').readline().replace("\n","")
         remote_hosttwo_ip = remote_hosttwo[remote_hosttwo.find("@")+1:]
     except KeyError as e:
         logger.error("Please set the host file " + str(e))
@@ -150,7 +167,4 @@ if __name__ == "__main__":
             if benchmark == "default":
                 continue
             processBench(local_config, benchmark)
-
-
-
 
