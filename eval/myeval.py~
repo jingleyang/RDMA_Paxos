@@ -1,0 +1,10 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#python2.7.x
+
+import ConfigParser
+
+def readConfigFile(config_file):
+    config = ConfigParser.ConfigParser()
+    config.read(config_file)
+    apps = config.sections()

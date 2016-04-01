@@ -1,0 +1,8 @@
+[mongodb]
+EVAL_OPTIONS=WITHOUT_HOOK,WITHOUT_CHECKPOINT,WITHOUT_OUTPUT_COMPARE
+SERVER_COUNT=3
+SERVER_PROGRAM=$RDMA_ROOT/apps/mongodb/install/bin/mongod
+SERVER_INPUT=$RDMA_ROOT/apps/redis/install/redis.conf
+SERVER_KILL=$RDMA_ROOT/apps/mongodb/install/bin/mongod --dbpath $RDMA_ROOT/apps/mongodb/install/data --shutdown
+CLIENT_PROGRAM=$RDMA_ROOT/apps/mongodb/ycsb-mongodb/bin/ycsb
+CLIENT_INPUT=run mongodb -P ./workloads/workloadc -p mongodb.url=mongodb://$SERVER_ONE_IP:27017 
