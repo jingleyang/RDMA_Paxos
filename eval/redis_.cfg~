@@ -1,6 +1,0 @@
-PAXOS_ENABLED=NO
-SERVER_INPUT=
-SERVER_KILL=
-SERVER_COUNT=3
-CLIENT_PROGRAM=$RDMA_ROOT/apps/redis/install/redis-benchmark
-CLIENT_INPUT=-c 1 -n 50000 -d 10 -h 127.0.0.1 -p 6379 -t set
