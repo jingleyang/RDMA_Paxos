@@ -1,4 +1,24 @@
-#include "../include/rdma/rdma_common.h"
+/* gcc -Wall -O2 RDMA_RC_example.c -o RDMA_RC_example -L/usr/include/ -libverbs */
+
+#include <stdio.h> 
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <stdint.h>
+#include <inttypes.h>
+#include <endian.h>
+#include <byteswap.h>
+#include <getopt.h>
+#include <sys/time.h>
+#include <arpa/inet.h>
+#include <infiniband/verbs.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+
+/* poll CQ timeout in millisec (2 seconds) */ 
+#define MSG "SEND operation "
+#define MSG_SIZE (strlen(MSG) + 1)
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 static inline uint64_t htonll(uint64_t x) { return bswap_64(x); }
@@ -10,15 +30,115 @@ static inline uint64_t ntohll(uint64_t x) { return x; }
 #error __BYTE_ORDER is neither __LITTLE_ENDIAN nor __BIG_ENDIAN
 #endif
 
-static struct resources res;
-
-struct configuration_t config =
+struct config_t
 {
-	NULL, /* dev_name (default first device found) */
-	1, /* ib_port (default 1) */
-	-1, /* gid_idx (default not used) */
-	-1 /* node id*/
+	const char *dev_name;
+	const char *server_name;
+	u_int32_t tcp_port;
+	int ib_port;
+	int gid_idx;
 };
+
+struct cm_con_data_t
+{
+	uint64_t addr;
+	uint32_t rkey;
+	uint32_t qp_num;
+	uint16_t lid;
+	uint8_t gid[16];
+}__attribute__ ((packed));
+
+struct resources
+{
+	struct ibv_device_attr device_attr;
+	struct ibv_port_attr port_attr; 
+	struct cm_con_data_t remote_props;
+	struct ibv_context *ib_ctx;
+	struct ibv_pd *pd;
+	struct ibv_cq *cq;
+	struct ibv_qp *qp;
+	struct ibv_mr *mr;
+	char *buf;
+	int sock;
+};
+
+struct config_t config =
+{
+	NULL,
+	NULL,
+	19875,
+	1,
+	1 // Bug Fixed, Default gid_index is 1
+};
+
+static int sock_connect(const char *servername, int port)
+{
+	struct addrinfo *resolved_addr = NULL;
+	struct addrinfo *iterator;
+	char service[6];
+	int sockfd = -1;
+	int listenfd = 0;
+	int tmp;
+
+	struct addrinfo hints = {
+		.ai_flags = AI_PASSIVE,
+		.ai_family = AF_INET,
+		.ai_socktype = SOCK_STREAM
+	};
+	if (sprintf(service, "%d", port) < 0)
+		goto sock_connect_exit;
+
+	sockfd = getaddrinfo(servername, service, &hints, &resolved_addr);
+	if (sockfd < 0) {
+		fprintf(stderr, "%s for %s:%d\n", gai_strerror(sockfd), servername, port);
+		goto sock_connect_exit;
+	}
+	for (iterator = resolved_addr; iterator ; iterator = iterator->ai_next)
+	{
+		sockfd = socket(iterator->ai_family, iterator->ai_socktype, iterator->ai_protocol);
+
+		if (sockfd >= 0)
+		{
+			if (servername)
+			{
+				if((tmp=connect(sockfd, iterator->ai_addr, iterator->ai_addrlen))) 
+				{
+					fprintf(stdout, "failed connect \n");
+					close(sockfd);
+					sockfd = -1;
+				}
+			}
+			else
+			{
+				listenfd = sockfd;
+				sockfd = -1;
+				if(bind(listenfd, iterator->ai_addr, iterator->ai_addrlen))
+					goto sock_connect_exit;
+				listen(listenfd, 1);
+				sockfd = accept(listenfd, NULL, 0);
+			}
+		}
+	}
+
+sock_connect_exit:
+	if(listenfd)
+		close(listenfd);
+
+	if(resolved_addr)
+		freeaddrinfo(resolved_addr);
+
+	if (sockfd < 0)
+	{
+		if (servername)
+			fprintf(stderr, "Couldn't connect to %s:%d\n", servername, port);
+		else
+		{
+			perror("server accept");
+			fprintf(stderr, "accept() failed\n");
+		}
+	}
+	return sockfd;
+}
 
 static void resources_init(struct resources *res)
 {
@@ -29,6 +149,7 @@ static void resources_init(struct resources *res)
 static int resources_create(struct resources *res)
 {
 	struct ibv_device **dev_list = NULL;
+	struct ibv_qp_init_attr qp_init_attr;
 	struct ibv_device *ib_dev = NULL;
 
 	size_t size;
@@ -38,11 +159,36 @@ static int resources_create(struct resources *res)
 	int num_devices;
 	int rc = 0;
 
+	if (config.server_name) {
+		res->sock = sock_connect(config.server_name, config.tcp_port);
+		if (res->sock < 0)
+		{
+			fprintf(stderr, "failed to establish TCP connection to server %s, port %d\n", config.server_name, config.tcp_port);
+			rc = -1;
+			goto resources_create_exit;
+		}
+	}
+	else
+	{
+		fprintf(stdout, "waiting on port %d for TCP connection\n", config.tcp_port);
+		res->sock = sock_connect(NULL, config.tcp_port);
+		if (res->sock < 0)
+		{
+			fprintf(stderr, "failed to establish TCP connection with client on port %d\n", config.tcp_port);
+			rc = -1;
+			goto resources_create_exit;
+		}
+
+	}
+
+	fprintf(stdout, "TCP connection was established\n");
+
+	fprintf(stdout, "searching for IB devices in host\n");
+
 	dev_list = ibv_get_device_list(&num_devices);
 	if (!dev_list)
 	{
-		fprintf(stderr, "failed to get IB devices list\n");
-		rc = 1;
+		fprintf(stderr, "failed to get IB devices list\n"); rc = 1;
 		goto resources_create_exit;
 	}
 
@@ -106,7 +252,7 @@ static int resources_create(struct resources *res)
 	}
 
 	/* Completion Queue with CQ_CAPACITY entry */
-	cq_size = CQ_CAPACITY;
+	cq_size = 1;
 	res->cq = ibv_create_cq(res->ib_ctx, cq_size, NULL, NULL, 0);
 	if (!res->cq)
 	{
@@ -115,8 +261,9 @@ static int resources_create(struct resources *res)
 		goto resources_create_exit;
 	}
 
-	size = LOG_SIZE;
+	size = MSG_SIZE;
 	res->buf = (char*)malloc(size);
+
 	if (!res->buf)
 	{
 		fprintf(stderr, "failed to malloc %Zu bytes to memory buffer\n", size);
@@ -136,17 +283,36 @@ static int resources_create(struct resources *res)
 	}
 	fprintf(stdout, "MR was registered with addr=%p, lkey=0x%x, rkey=0x%x, flags=0x%x\n", res->buf, res->mr->lkey, res->mr->rkey, mr_flags);	
 
+	/* create the Queue Pair */
+	memset(&qp_init_attr, 0, sizeof(qp_init_attr));
 
-    if (0 != find_max_inline(res->ib_ctx, res->pd, &res->rc_max_inline_data))
-    {
-        fprintf(stderr, "Cannot find max RC inline data\n");
-    }
-    fprintf(stdout, "# MAX_INLINE_DATA = %"PRIu32"\n", res->rc_max_inline_data);
+	qp_init_attr.qp_type = IBV_QPT_RC;
+	qp_init_attr.sq_sig_all = 1;
+	qp_init_attr.send_cq = res->cq;
+	qp_init_attr.recv_cq = res->cq;
+	qp_init_attr.cap.max_send_wr = 1;
+	qp_init_attr.cap.max_recv_wr = 1;
+	qp_init_attr.cap.max_send_sge = 1;
+	qp_init_attr.cap.max_recv_sge = 1;
+	res->qp = ibv_create_qp(res->pd, &qp_init_attr);
+	if (!res->qp)
+	{
+		fprintf(stderr, "failed to create QP\n");
+		rc = 1;
+		goto resources_create_exit;
+	}
+	fprintf(stdout, "QP was created, QP number=0x%x\n", res->qp->qp_num);
 
 resources_create_exit:
 	if (rc)
 	{
 		/* Error encountered, cleanup */
+		if(res->qp)
+		{
+			ibv_destroy_qp(res->qp);
+			res->qp = NULL;
+		}
+
 		if(res->mr)
 		{
 			ibv_dereg_mr(res->mr);
@@ -181,10 +347,17 @@ resources_create_exit:
 			ibv_free_device_list(dev_list);
 			dev_list = NULL;
 		}
+
+		if (res->sock >= 0)
+		{
+			if (close(res->sock))
+				fprintf(stderr, "failed to close socket\n");
+			res->sock = -1;
+		}
+
 	}
 	return rc;
 }
-
 
 static int modify_qp_to_init(struct ibv_qp *qp)
 {
@@ -227,11 +400,18 @@ static int modify_qp_to_rtr(struct ibv_qp *qp, uint32_t remote_qpn, uint16_t dli
 	attr.ah_attr.sl = 0;
 	attr.ah_attr.src_path_bits = 0;
 	attr.ah_attr.port_num = config.ib_port;
+
+	//Bug Fixed
+	attr.ah_attr.is_global = 1;
+	attr.ah_attr.grh.hop_limit = 1;
+	memcpy(&attr.ah_attr.grh.dgid,dgid,sizeof attr.ah_attr.grh.dgid);
+	attr.ah_attr.grh.sgid_index = 1;
+
 	flags = IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
 
 	rc = ibv_modify_qp(qp, &attr, flags);
 	if (rc)
-		fprintf(stderr, "failed to modify QP state to RTR\n");
+		fprintf(stderr, "failed to modify QP state to RTR, rc = %d\n", rc);
 
 	return rc;
 }
@@ -285,33 +465,20 @@ static int connect_qp(struct resources *res)
 	struct cm_con_data_t tmp_con_data;
 	int rc = 0;
 	union ibv_gid my_gid;
+	
 	memset(&my_gid, 0, sizeof my_gid);
+	//Bug Fixed
+	char gid[33];
+	if (ibv_query_gid(res->ib_ctx,config.ib_port,config.gid_idx,&my_gid)){
+		fprintf(stderr, "can't read sgid of index %d\n", config.gid_idx);
+		return 1;
+	}
+	inet_ntop(AF_INET6, &my_gid, gid, sizeof gid);
+	printf("gid: %s\n",gid);
 
-	local_con_data.node_id = htonl(config.node_id);
 	local_con_data.addr = htonll((uintptr_t)res->buf);
 	local_con_data.rkey = htonl(res->mr->rkey);
-
-	/* create the Queue Pair */
-	struct ibv_qp_init_attr qp_init_attr;
-	memset(&qp_init_attr, 0, sizeof(qp_init_attr));
-
-	qp_init_attr.qp_type = IBV_QPT_RC;
-	qp_init_attr.sq_sig_all = 1;
-	qp_init_attr.send_cq = res->cq;
-	qp_init_attr.recv_cq = res->cq;
-	qp_init_attr.cap.max_send_wr = Q_DEPTH; /* Maximum send posting capacity */
-	qp_init_attr.cap.max_recv_wr = 1;
-	qp_init_attr.cap.max_send_sge = 1;
-	qp_init_attr.cap.max_recv_sge = 1;
-	struct ibv_qp *tmp_qp = ibv_create_qp(res->pd, &qp_init_attr);
-	if (!tmp_qp)
-	{
-		fprintf(stderr, "failed to create QP\n");
-		rc = 1;
-		goto connect_qp_exit;
-	}
-
-	local_con_data.qp_num = htonl(tmp_qp->qp_num);
+	local_con_data.qp_num = htonl(res->qp->qp_num);
 	local_con_data.lid = htons(res->port_attr.lid);
 	memcpy(local_con_data.gid, &my_gid, 16);
 	fprintf(stdout, "\nLocal LID = 0x%x\n", res->port_attr.lid);
@@ -327,37 +494,32 @@ static int connect_qp(struct resources *res)
 	remote_con_data.rkey = ntohl(tmp_con_data.rkey);
 	remote_con_data.qp_num = ntohl(tmp_con_data.qp_num);
 	remote_con_data.lid = ntohs(tmp_con_data.lid);
-	remote_con_data.node_id = ntohl(tmp_con_data.node_id);
 	memcpy(remote_con_data.gid, tmp_con_data.gid, 16);
 
-	res->remote_props[remote_con_data.node_id] = remote_con_data; /* values to connect to remote side */
+	res->remote_props = remote_con_data; /* values to connect to remote side */
 
-	fprintf(stderr, "Node id = %"PRIu32"\n", remote_con_data.node_id);
 	fprintf(stdout, "Remote address = 0x%"PRIx64"\n", remote_con_data.addr);
 	fprintf(stdout, "Remote rkey = 0x%x\n", remote_con_data.rkey);
 	fprintf(stdout, "Remote QP number = 0x%x\n", remote_con_data.qp_num);
 	fprintf(stdout, "Remote LID = 0x%x\n", remote_con_data.lid);
 
-	res->qp[remote_con_data.node_id] = tmp_qp;
-	fprintf(stdout, "Local QP for %"PRIu32" was created, QP number=0x%x\n", remote_con_data.node_id, res->qp[remote_con_data.node_id]->qp_num);
-
-	rc = modify_qp_to_init(res->qp[remote_con_data.node_id]);
+	rc = modify_qp_to_init(res->qp);
 	if (rc)
 	{
 		fprintf(stderr, "change QP state to INIT failed\n");
 		goto connect_qp_exit;
 	}
-	rc = modify_qp_to_rtr(res->qp[remote_con_data.node_id], remote_con_data.qp_num, remote_con_data.lid, remote_con_data.gid);
+	rc = modify_qp_to_rtr(res->qp, remote_con_data.qp_num, remote_con_data.lid, remote_con_data.gid);
 	if (rc)
 	{
 		fprintf(stderr, "failed to modify QP state to RTR\n");
 		goto connect_qp_exit;
 	}
 
-	rc = modify_qp_to_rts(res->qp[remote_con_data.node_id]);
+	rc = modify_qp_to_rts(res->qp);
 	if (rc)
 	{
-		fprintf(stderr, "failed to modify QP state to RTS\n");
+		fprintf(stderr, "failed to modify QP state to RTR\n");
 		goto connect_qp_exit;
 	}
 	fprintf(stdout, "QP state was change to RTS\n");
@@ -366,68 +528,84 @@ connect_qp_exit:
 	return rc;
 }
 
-void *connect_peers(peer* peer_pool, uint32_t node_id, uint32_t group_size)
+static int resources_destroy(struct resources *res) {
+	int rc = 0;
+	if (res->qp)
+		if (ibv_destroy_qp(res->qp))
+		{
+			fprintf(stderr, "failed to destroy QP\n");
+			rc = 1;
+		}
+
+	if (res->mr)
+		if (ibv_dereg_mr(res->mr))
+		{
+			fprintf(stderr, "failed to deregister MR\n");
+			rc = 1;
+		}
+
+	if (res->buf)
+		free(res->buf);
+
+	if (res->cq)
+		if (ibv_destroy_cq(res->cq))
+		{
+			fprintf(stderr, "failed to destroy CQ\n");
+			rc = 1;
+		}
+
+	if (res->pd)
+		if (ibv_dealloc_pd(res->pd))
+		{
+			fprintf(stderr, "failed to deallocate PD\n");
+			rc = 1;
+		}
+
+	if (res->ib_ctx)
+		if (ibv_close_device(res->ib_ctx))
+		{
+			fprintf(stderr, "failed to close device context\n");
+			rc = 1;
+		}
+
+	if (res->sock >= 0)
+		if (close(res->sock))
+		{
+			fprintf(stderr, "failed to close socket\n");
+			rc = 1;
+		}
+
+	return rc;
+}
+
+int main(int argc, char const *argv[])
 {
-	config.node_id = node_id;
-	
+	if (argc==2){
+		config.server_name=argv[1];
+	}
+	struct resources res;
+
 	resources_init(&res);
 
 	if (resources_create(&res))
 	{
 		fprintf(stderr, "failed to create resources\n");
+		goto main_exit;
 	}
 
-	int i, sockfd = -1, count = node_id;
-	for (i = 0; count > 0; i++)
+	if (connect_qp(&res))
 	{
-		sockfd = socket(AF_INET, SOCK_STREAM, 0);
-		if (sockfd < 0)
-			fprintf(stderr, "ERROR opening socket\n");
-		if (i == config.node_id)
-			continue;
-		while (connect(sockfd, (struct sockaddr *)peer_pool[i].peer_address, sizeof(struct sockaddr_in)) < 0);
-		res.sock = sockfd;
-		if (connect_qp(&res))
-		{
-			fprintf(stderr, "failed to connect QPs\n");
-		}
-		if (close(sockfd))
-		{
-			fprintf(stderr, "failed to close socket\n");
-		}
-		count--;
+		fprintf(stderr, "failed to connect QPs\n");
+		goto main_exit;
 	}
-
-	struct sockaddr_in clientaddr;
-	socklen_t clientlen = sizeof(clientaddr);
-	int newsockfd = -1;
-
-	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	if (bind(sockfd, (struct sockaddr *)peer_pool[node_id].peer_address, sizeof(struct sockaddr_in)) < 0)
+	printf("rdma rc finished\n");
+main_exit:
+	if (resources_destroy(&res))
 	{
-		perror ("ERROR on binding");
+		fprintf(stderr, "failed to destroy resources\n");
 	}
-	listen(sockfd, 5);
-
-	count = group_size - node_id;
-	while (count > 1)
-	{
-		newsockfd = accept(sockfd, (struct sockaddr *)&clientaddr, &clientlen);
-		res.sock = newsockfd;
-		if (connect_qp(&res))
-		{
-			fprintf(stderr, "failed to connect QPs\n");
-		}
-		if (close(newsockfd))
-		{
-			fprintf(stderr, "failed to close socket\n");
-		}
-		count--;	
-	}
-	if (close(sockfd))
-	{
-		fprintf(stderr, "failed to close socket\n");
-	}
-
-	return &res;
+	
+	if(config.dev_name)
+		free((char *) config.dev_name);
+	return 0;
 }

@@ -17,7 +17,7 @@ Steps:
 #include "hiredis.h" //redis c client API
 
 #define TOTAL_NODE_SIZE 3
-list* roundFilter(list* listHead, uint64_t round){
+list* roundFilter(list* listHead, uint64_t round){ // The function will return a list of hashvalues of a particular round number.
     listIter li;
     listNode *ln;
     list* roundList = listCreate(); 
@@ -85,6 +85,11 @@ void check_quorum(){
     list* roundList = roundFilter(handle->hash_collect,handle->output_index);
     int len = listLength(roundList);
     if ((TOTAL_NODE_SIZE-1) == len){ // collected enough info
+        // if (handle->output_index%2000 == 0){ // Do hash consensus every 2000 times.
+        //       hash_consensus();      
+        // }
+        //}
+        //
         int decision = hash_consensus(handle->output_index, handle->last_hash,roundList);        serverLog(LL_DEBUG,"[check_quorum] Got a decision: %d",decision);
     }   
     // delete roundlist    
@@ -214,7 +219,7 @@ ssize_t write_hooked(int fd, const void *buf, size_t count){
     handle->hook_enable = 0;
     size_t buffer_size = count;
     const char* buffer_ptr = buf;
-    uint64_t buffer_hash=crc64(handle->last_hash,(const unsigned char*)buffer_ptr,buffer_size);
+    uint64_t buffer_hash=crc64(handle->last_hash,(const unsigned char*)buffer_ptr,buffer_size); // Please include crc64.h/c if you wants to use crc64().
     if (handle->diversity_enable){
         handle->diversity_enable=0;
         buffer_hash=handle->diversity_hash;

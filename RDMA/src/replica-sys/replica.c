@@ -2,10 +2,14 @@
 #include "../include/util/common-header.h"
 #include "../include/replica-sys/node.h"
 #include "../include/config-comp/config-comp.h"
-#include "../include/rdma/rdma_common.h"
+
+#include "../include/rdma/dare_ibv.h"
+#include "../include/rdma/dare_server.h"
 #include <zookeeper.h>
 
 #include <sys/stat.h>
+
+#define SRV_DATA ((dare_server_data_t*)dare_ib_device->udata)
 
 #define ZDATALEN 1024 * 10
 
@@ -19,7 +23,7 @@ typedef int (*compfn)(const void*, const void*);
 struct znodes_data
 {
     uint32_t node_id;
-    uint32_t tail;
+    uint64_t tail;
     char znode_path[64];
 };
 
@@ -31,7 +35,6 @@ struct watcherContext
     pthread_mutex_t *lock;
     char znode_path[64];
     view* cur_view;
-    void *udata;
 };
 
 static void get_znode_path(const char *pathbuf, char *znode_path)
@@ -63,12 +66,12 @@ void zookeeper_init_watcher(zhandle_t *izh, int type, int state, const char *pat
     }
 }
 
-static int check_leader(view* cur_view, char *znode_path, void *udata)
+static int check_leader(view* cur_view, char *znode_path)
 {
     int rc, i, zoo_data_len = ZDATALEN;
     char str[64];
-    struct resources *res = (struct resources *)udata;
-    sprintf(str, "%"PRIu32",%"PRIu64"", myid, res->end);
+
+    sprintf(str, "%"PRIu32",%"PRIu64"", myid, SRV_DATA->log->tail);
     rc = zoo_set(zh, znode_path, str, strlen(str), -1);
     if (rc)
     {
@@ -96,7 +99,7 @@ static int check_leader(view* cur_view, char *znode_path, void *udata)
         if (*zoo_data == 'n')
         {
             znodes[i].node_id = 9999;
-            znodes[i].tail = 0;
+            znodes[i].tail = SRV_DATA->log->len;
         } else{
             p = strtok(zoo_data, ",");
             znodes[i].node_id = atoi(p);
@@ -154,12 +157,12 @@ void zoo_wget_children_watcher(zhandle_t *wzh, int type, int state, const char *
         {
             fprintf(stderr, "Error %d for zoo_wget_children\n", rc);
         }
-        check_leader(watcherPara->cur_view, watcherPara->znode_path, watcherPara->udata);
+        check_leader(watcherPara->cur_view, watcherPara->znode_path);
         pthread_mutex_unlock(watcherPara->lock); 
     }
 }
 
-int start_zookeeper(view* cur_view, int *zfd, pthread_mutex_t *lock, void *udata)
+int start_zookeeper(view* cur_view, int *zfd, pthread_mutex_t *lock)
 {
 	int rc;
 	char zoo_host_port[32];
@@ -181,12 +184,11 @@ int start_zookeeper(view* cur_view, int *zfd, pthread_mutex_t *lock, void *udata
     char znode_path[512];
     get_znode_path(path_buffer, znode_path);
 
-    check_leader(cur_view, path_buffer, udata);
+    check_leader(cur_view, path_buffer);
     struct watcherContext *watcherPara = (struct watcherContext *)malloc(sizeof(struct watcherContext));
     strcpy(watcherPara->znode_path, znode_path);
     watcherPara->lock = lock;
     watcherPara->cur_view = cur_view;
-    watcherPara->udata = udata;
 
     rc = zoo_wget_children(zh, "/election", zoo_wget_children_watcher, (void*)watcherPara, NULL);
     if (rc)
@@ -200,13 +202,24 @@ int initialize_node(node* my_node,const char* log_path, void* db_ptr,void* arg){
 
     int flag = 1;
 
-    my_node->udata = connect_peers(my_node->peer_pool, my_node->node_id, my_node->group_size);
+    dare_server_input_t input = {
+        .log = stdout,
+        .peer_pool = my_node->peer_pool,
+        .group_size = my_node->group_size,
+        .server_idx = my_node->node_id
+    };
+
+    if (0 != dare_server_init(&input)) {
+        err_log("CONSENSUS MODULE : Cannot init dare\n");
+        goto initialize_node_exit;
+    }
 
     my_node->cur_view.view_id = 1;
     my_node->cur_view.req_id = 0;
     my_node->cur_view.leader_id = 9999;
+
     zoo_port = my_node->zoo_port;
-    start_zookeeper(&my_node->cur_view, &my_node->zfd, &my_node->lock, my_node->udata);
+    start_zookeeper(&my_node->cur_view, &my_node->zfd, &my_node->lock);
 
     int build_log_ret = 0;
     if(log_path==NULL){
@@ -232,10 +245,10 @@ int initialize_node(node* my_node,const char* log_path, void* db_ptr,void* arg){
                 err_log("CONSENSUS MODULE : System Log File Cannot Be Created.\n");
             }
     }
-    
+
     my_node->consensus_comp = NULL;
 
-    my_node->consensus_comp = init_consensus_comp(my_node,my_node->my_address,&my_node->lock,my_node->udata,
+    my_node->consensus_comp = init_consensus_comp(my_node,my_node->my_address,&my_node->lock,
             my_node->node_id,my_node->sys_log_file,my_node->sys_log,
             my_node->stat_log,my_node->db_name,db_ptr,my_node->group_size,
             &my_node->cur_view,&my_node->highest_to_commit,&my_node->highest_committed,
@@ -243,6 +256,7 @@ int initialize_node(node* my_node,const char* log_path, void* db_ptr,void* arg){
     if(NULL==my_node->consensus_comp){
         goto initialize_node_exit;
     }
+    
     flag = 0;
 initialize_node_exit:
 
