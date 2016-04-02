@@ -1,13 +1,11 @@
 #!/bin/bash
+if [ -f ~/.bashrc ]; then
+  source ~/.bashrc
+fi
+#run master in localhost
+cd $RDMA_ROOT/apps/redis/install
+./redis-server ./redis.conf &
 
-
-#run the redis-master docker
-docker exec -ti redis-master /data/redis-run
-
-#run set transactions in redis
-#redis-benchmark -c 1 -n 20000 -d 10 -h 127.0.0.1 -p 6379 -t set > result.txt
-
-#copy result to Desktop
-docker cp redis-master:/data/result.txt  `pwd`
-
-
+#run slaves 
+ssh $(cat $RDMA_ROOT/apps/env/remote_host1) "$RDMA_ROOT/apps/redis/install/redis-server $RDMA_ROOT/apps/redis/install/redis-slave.conf &" &
+ssh $(cat $RDMA_ROOT/apps/env/remote_host2) "$RDMA_ROOT/apps/redis/install/redis-server $RDMA_ROOT/apps/redis/install/redis-slave.conf &" &
