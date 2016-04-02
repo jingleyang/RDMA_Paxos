@@ -4,10 +4,6 @@
 #ifndef DARE_IBV_H
 #define DARE_IBV_H
 
-#define CTRL_PSN 13
-#define LOG_QP 1
-#define CTRL_QP 0
-
 #define mtu_value(mtu) \
     ((mtu == IBV_MTU_256) ? 256 :    \
     (mtu == IBV_MTU_512) ? 512 :    \
@@ -35,14 +31,15 @@ typedef struct rc_cq_t rc_cq_t;
 
 /* Endpoint RC info */
 struct rc_ep_t {
-    rem_mem_t rmt_mr[2];    // remote memory regions
-    rc_qp_t   rc_qp[2];     // RC QPs (LOG & CTRL)
-    rc_cq_t   rc_cq[2];     // RC CQs (LOG & CTRL)
+    rem_mem_t rmt_mr;    // remote memory regions
+    rc_qp_t   rc_qp;     // RC QPs (LOG)
+    rc_cq_t   rc_cq;     // RC CQs (LOG)
 };
 typedef struct rc_ep_t rc_ep_t;
 
 struct dare_ib_ep_t {
     rc_ep_t rc_ep;  // RC info
+    int rc_connected;
 };
 typedef struct dare_ib_ep_t dare_ib_ep_t;
 
@@ -60,7 +57,7 @@ struct dare_ib_device_t {
     /* QPs for inter-server communication - RC */
     struct ibv_pd *rc_pd;
     int rc_cqe;
-    struct ibv_mr *lcl_mr[2];
+    struct ibv_mr *lcl_mr;
     uint32_t      rc_max_inline_data;
     uint32_t      rc_max_send_wr;
 

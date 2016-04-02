@@ -4,6 +4,11 @@
 #include "../util/common-header.h"
 #include "../db/db-interface.h"
 
+#include "../output/output.h"
+
+#define CSM     1
+#define CHECK   2
+
 typedef uint64_t db_key_type;
 struct node_t;
 
@@ -31,7 +36,7 @@ struct consensus_component_t{ con_role my_role;
     db* db_ptr;
     
     pthread_mutex_t* lock;
-    void* udata;
+    struct output_handler_t* output_handler;
 };
 typedef struct consensus_component_t consensus_component; 
 
@@ -42,7 +47,7 @@ consensus_component* init_consensus_comp(struct node_t*,struct sockaddr_in,pthre
 #ifdef __cplusplus
 extern "C" {
 #endif
-    int rsm_op(consensus_component* comp, void* data, size_t data_size);
+    int rsm_op(consensus_component* comp, void* data, ssize_t data_size, uint8_t type);
     void *handle_accept_req(void* arg);
 #ifdef __cplusplus
 }

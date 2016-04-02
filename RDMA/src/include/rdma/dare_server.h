@@ -5,18 +5,11 @@
 #include "dare.h"
 #include "../replica-sys/node.h"
 
-#define CTRL_SIZE 10
-
 struct server_t {
     void *ep;               // endpoint data (network related)
     struct sockaddr_in* peer_address;
 };
 typedef struct server_t server_t;
-
-struct ctrl_data_t {
-    int    vote_req[MAX_SERVER_COUNT];
-};
-typedef struct ctrl_data_t ctrl_data_t;
 
 struct dare_server_input_t {
     FILE *log;
@@ -31,7 +24,6 @@ struct dare_server_data_t {
     
     server_config_t config; // configuration 
     
-    ctrl_data_t *ctrl_data;  // control data (state & private data)
     dare_log_t  *log;       // local log (remotely accessible)
 };
 typedef struct dare_server_data_t dare_server_data_t;

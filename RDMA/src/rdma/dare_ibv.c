@@ -155,7 +155,7 @@ error:
     return NULL;      
 }
 
-void dare_ib_destroy_ep(uint8_t idx)
+void dare_ib_destroy_ep(uint32_t idx)
 {
     dare_ib_ep_t *ep = (dare_ib_ep_t*)SRV_DATA->config.servers[idx].ep;
     if (NULL == ep) {
@@ -174,7 +174,7 @@ void dare_ib_srv_shutdown()
     
     if (NULL != SRV_DATA) {
         if (NULL != SRV_DATA->config.servers) {
-            uint8_t i, size = SRV_DATA->config.len;
+            uint32_t i, size = SRV_DATA->config.len;
             for (i = 0; i < size; i++) {
                 dare_ib_destroy_ep(i);
             }

@@ -27,9 +27,9 @@ static void rc_cq_destroy(dare_ib_ep_t* ep);
 static int rc_connect_server();
 static int sock_sync_data(int sock, int xfer_size, char *local_data, char *remote_data);
 static int connect_qp(int sock);
-static int rc_qp_init_to_rtr(dare_ib_ep_t *ep, int qp_id, uint16_t dlid, uint8_t *dgid);
-static int rc_qp_rtr_to_rts(dare_ib_ep_t *ep, int qp_id);
-static int rc_qp_reset_to_init( dare_ib_ep_t *ep, int qp_id);
+static int rc_qp_init_to_rtr(dare_ib_ep_t *ep, uint16_t dlid, uint8_t *dgid);
+static int rc_qp_rtr_to_rts(dare_ib_ep_t *ep);
+static int rc_qp_reset_to_init( dare_ib_ep_t *ep);
 static int poll_cq(int max_wc, struct ibv_cq *cq);
 
 /* ================================================================== */
@@ -79,52 +79,40 @@ static void rc_memory_dereg()
 {
     int rc;
     
-    if (NULL != IBDEV->lcl_mr[LOG_QP]) {
-        rc = ibv_dereg_mr(IBDEV->lcl_mr[LOG_QP]);
+    if (NULL != IBDEV->lcl_mr) {
+        rc = ibv_dereg_mr(IBDEV->lcl_mr);
         if (0 != rc) {
             rdma_error(log_fp, "Cannot deregister memory");
         }
-        IBDEV->lcl_mr[LOG_QP] = NULL;
-    }
-    if (NULL != IBDEV->lcl_mr[CTRL_QP]) {
-        rc = ibv_dereg_mr(IBDEV->lcl_mr[CTRL_QP]);
-        if (0 != rc) {
-            rdma_error(log_fp, "Cannot deregister memory");
-        }
-        IBDEV->lcl_mr[CTRL_QP] = NULL;
+        IBDEV->lcl_mr = NULL;
     }
 }
 
 static void rc_qp_destroy(dare_ib_ep_t* ep)
 {
-    int rc, i;
+    int rc;
 
     if (NULL == ep) return;
-    
-    for (i = 0; i < 2; i++) {
-        if (NULL == ep->rc_ep.rc_qp[i].qp) continue;       
-        rc = ibv_destroy_qp(ep->rc_ep.rc_qp[i].qp);
-        if (0 != rc) {
-            rdma_error(log_fp, "ibv_destroy_qp failed because %s\n", strerror(rc));
-        }
-        ep->rc_ep.rc_qp[i].qp = NULL;
+
+    rc = ibv_destroy_qp(ep->rc_ep.rc_qp.qp);
+    if (0 != rc) {
+        rdma_error(log_fp, "ibv_destroy_qp failed because %s\n", strerror(rc));
     }
+    ep->rc_ep.rc_qp.qp = NULL;
+
 }
 
-static void rc_cq_destroy( dare_ib_ep_t* ep )
+static void rc_cq_destroy(dare_ib_ep_t* ep)
 {
-    int rc, i;
+    int rc;
 
     if (NULL == ep) return;
-    
-    for (i = 0; i < 2; i++) {
-        if (NULL == ep->rc_ep.rc_cq[i].cq) continue;       
-        rc = ibv_destroy_cq(ep->rc_ep.rc_cq[i].cq);
-        if (0 != rc) {
-            rdma_error(log_fp, "ibv_destroy_cq failed because %s\n", strerror(rc));
-        }
-        ep->rc_ep.rc_cq[i].cq = NULL;
+
+    rc = ibv_destroy_cq(ep->rc_ep.rc_cq.cq);
+    if (0 != rc) {
+        rdma_error(log_fp, "ibv_destroy_cq failed because %s\n", strerror(rc));
     }
+    ep->rc_ep.rc_cq.cq = NULL;
 }
 
 static int rc_connect_server()
@@ -190,7 +178,7 @@ static int rc_connect_server()
     }
 
     rc = 0;
-rc_connect_server_exit:
+    rc_connect_server_exit:
     return rc;
 }
 
@@ -218,7 +206,7 @@ static int connect_qp(int sock)
     struct cm_con_data_t local_con_data;
     struct cm_con_data_t remote_con_data;
     struct cm_con_data_t tmp_con_data;
-    int i, rc = 0;
+    int rc = 0;
     union ibv_gid my_gid;
 
     if (IBDEV->gid_idx >= 0)
@@ -234,36 +222,32 @@ static int connect_qp(int sock)
         memset(&my_gid, 0, sizeof my_gid);
 
     local_con_data.idx = htonl(SRV_DATA->config.idx);
-    local_con_data.log_mr.raddr = htonll((uintptr_t)IBDEV->lcl_mr[LOG_QP]->addr);
-    local_con_data.ctrl_mr.raddr = htonll((uintptr_t)IBDEV->lcl_mr[CTRL_QP]->addr);
-    local_con_data.log_mr.rkey = htonl(IBDEV->lcl_mr[LOG_QP]->rkey);
-    local_con_data.ctrl_mr.rkey = htonl(IBDEV->lcl_mr[CTRL_QP]->rkey);
+    local_con_data.log_mr.raddr = htonll((uintptr_t)IBDEV->lcl_mr->addr);
+    local_con_data.log_mr.rkey = htonl(IBDEV->lcl_mr->rkey);
 
     struct ibv_qp_init_attr qp_init_attr;
-    struct ibv_qp *tmp_qp[2];
-    struct ibv_cq *tmp_cq[2];
-    for (i = 0; i < 2; i++) {
-        tmp_cq[i] = ibv_create_cq(IBDEV->ib_dev_context, IBDEV->rc_cqe, NULL, NULL, 0);
-        if (NULL == tmp_cq[i]) {
-            error_return(1, log_fp, "Cannot create CQ\n");
-        }
-        memset(&qp_init_attr, 0, sizeof(qp_init_attr));
-        qp_init_attr.qp_type = IBV_QPT_RC;
-        qp_init_attr.send_cq = tmp_cq[i];
-        qp_init_attr.recv_cq = tmp_cq[i];
-        qp_init_attr.cap.max_inline_data = IBDEV->rc_max_inline_data;
-        qp_init_attr.cap.max_send_sge = 1;  
-        qp_init_attr.cap.max_recv_sge = 1;
-        qp_init_attr.cap.max_recv_wr = 1;
-        qp_init_attr.cap.max_send_wr = IBDEV->rc_max_send_wr;;
-        tmp_qp[i] = ibv_create_qp(IBDEV->rc_pd, &qp_init_attr);
-        if (NULL == tmp_qp[i]) {
-            error_return(1, log_fp, "Cannot create QP\n");
-        }
+    struct ibv_qp *tmp_qp;
+    struct ibv_cq *tmp_cq;
+
+    tmp_cq = ibv_create_cq(IBDEV->ib_dev_context, IBDEV->rc_cqe, NULL, NULL, 0);
+    if (NULL == tmp_cq) {
+        error_return(1, log_fp, "Cannot create CQ\n");
+    }
+    memset(&qp_init_attr, 0, sizeof(qp_init_attr));
+    qp_init_attr.qp_type = IBV_QPT_RC;
+    qp_init_attr.send_cq = tmp_cq;
+    qp_init_attr.recv_cq = tmp_cq;
+    qp_init_attr.cap.max_inline_data = IBDEV->rc_max_inline_data;
+    qp_init_attr.cap.max_send_sge = 1;  
+    qp_init_attr.cap.max_recv_sge = 1;
+    qp_init_attr.cap.max_recv_wr = 1;
+    qp_init_attr.cap.max_send_wr = IBDEV->rc_max_send_wr;;
+    tmp_qp = ibv_create_qp(IBDEV->rc_pd, &qp_init_attr);
+    if (NULL == tmp_qp) {
+        error_return(1, log_fp, "Cannot create QP\n");
     }
 
-    local_con_data.qpns[1] = htonl(tmp_qp[LOG_QP]->qp_num);
-    local_con_data.qpns[0] = htonl(tmp_qp[CTRL_QP]->qp_num);
+    local_con_data.qpns = htonl(tmp_qp->qp_num);
 
     local_con_data.lid = htons(IBDEV->lid);
     memcpy(local_con_data.gid, &my_gid, 16);
@@ -282,21 +266,15 @@ static int connect_qp(int sock)
 
     dare_ib_ep_t *ep = (dare_ib_ep_t*)SRV_DATA->config.servers[idx].ep;
 
-    ep->rc_ep.rmt_mr[LOG_QP].raddr = ntohll(tmp_con_data.log_mr.raddr);
-    ep->rc_ep.rmt_mr[CTRL_QP].raddr = ntohll(tmp_con_data.ctrl_mr.raddr);
-    ep->rc_ep.rmt_mr[LOG_QP].rkey = ntohl(tmp_con_data.log_mr.rkey);
-    ep->rc_ep.rmt_mr[CTRL_QP].rkey = ntohl(tmp_con_data.ctrl_mr.rkey);
-    ep->rc_ep.rc_qp[LOG_QP].qpn = ntohl(tmp_con_data.qpns[1]);
-    ep->rc_ep.rc_qp[CTRL_QP].qpn = ntohl(tmp_con_data.qpns[0]);
+    ep->rc_ep.rmt_mr.raddr = ntohll(tmp_con_data.log_mr.raddr);
+    ep->rc_ep.rmt_mr.rkey = ntohl(tmp_con_data.log_mr.rkey);
+    ep->rc_ep.rc_qp.qpn = ntohl(tmp_con_data.qpns);
 
     fprintf(stderr, "Node id = %"PRIu32"\n", idx);
-    fprintf(stdout, "Remote LOG address = 0x%"PRIx64"\n", ep->rc_ep.rmt_mr[LOG_QP].raddr);
-    fprintf(stdout, "Remote CTRL address = 0x%"PRIx64"\n", ep->rc_ep.rmt_mr[CTRL_QP].raddr);
-    fprintf(stdout, "Remote LOG rkey = 0x%x\n", ep->rc_ep.rmt_mr[LOG_QP].rkey);
-    fprintf(stdout, "Remote CTRL rkey = 0x%x\n", ep->rc_ep.rmt_mr[CTRL_QP].rkey);
+    fprintf(stdout, "Remote LOG address = 0x%"PRIx64"\n", ep->rc_ep.rmt_mr.raddr);
+    fprintf(stdout, "Remote LOG rkey = 0x%x\n", ep->rc_ep.rmt_mr.rkey);
 
-    fprintf(stdout, "Remote LOG QP number = 0x%x\n", ep->rc_ep.rc_qp[LOG_QP].qpn);
-    fprintf(stdout, "Remote CTRL QP number = 0x%x\n", ep->rc_ep.rc_qp[LOG_QP].qpn);
+    fprintf(stdout, "Remote LOG QP number = 0x%x\n", ep->rc_ep.rc_qp.qpn);
 
     fprintf(stdout, "Remote LID = 0x%x\n", remote_con_data.lid);
     if (IBDEV->gid_idx >= 0)
@@ -305,40 +283,24 @@ static int connect_qp(int sock)
         fprintf(stdout, "Remote GID = %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x\n\n", p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], p[13], p[14], p[15]);
     }
 
-    ep->rc_ep.rc_qp[LOG_QP].qp = tmp_qp[1];
-    ep->rc_ep.rc_qp[CTRL_QP].qp = tmp_qp[0];
-    ep->rc_ep.rc_cq[LOG_QP].cq = tmp_cq[1];
-    ep->rc_ep.rc_cq[CTRL_QP].cq = tmp_cq[0];
+    ep->rc_ep.rc_qp.qp = tmp_qp;
+    ep->rc_ep.rc_cq.cq = tmp_cq;
 
-    rc = rc_qp_reset_to_init(ep, LOG_QP);
+    rc = rc_qp_reset_to_init(ep);
     if (rc)
     {
         fprintf(stderr, "change LOG QP state to INIT failed\n");
         goto connect_qp_exit;
     }
 
-    rc = rc_qp_reset_to_init(ep, CTRL_QP);
+    rc = rc_qp_init_to_rtr(ep, remote_con_data.lid, remote_con_data.gid);
     if (rc)
     {
-        fprintf(stderr, "change CTRL QP state to INIT failed\n");
+        fprintf(stderr, "failed to modify LOG QP state to RTR\n");
         goto connect_qp_exit;
     }
 
-    rc = rc_qp_init_to_rtr(ep, LOG_QP, remote_con_data.lid, remote_con_data.gid);
-    if (rc)
-    {
-        fprintf(stderr, "failed to modify LOG_QP QP state to RTR\n");
-        goto connect_qp_exit;
-    }
-
-    rc = rc_qp_init_to_rtr(ep, CTRL_QP, remote_con_data.lid, remote_con_data.gid);
-    if (rc)
-    {
-        fprintf(stderr, "failed to modify CTRL_QP QP state to RTR\n");
-        goto connect_qp_exit;
-    }
-
-    rc = rc_qp_rtr_to_rts(ep, LOG_QP);
+    rc = rc_qp_rtr_to_rts(ep);
     if (rc)
     {
         fprintf(stderr, "failed to modify LOG QP state to RTS\n");
@@ -346,15 +308,9 @@ static int connect_qp(int sock)
     }
     fprintf(stdout, "LOG QP state was change to RTS\n");
 
-    rc = rc_qp_rtr_to_rts(ep, CTRL_QP);
-    if (rc)
-    {
-        fprintf(stderr, "failed to modify CTRL QP state to RTS\n");
-        goto connect_qp_exit;
-    }
-    fprintf(stdout, "CTRL QP state was change to RTS\n");
+    ep->rc_connected = 1;
 
-connect_qp_exit:
+    connect_qp_exit:
     return rc;
 }
 
@@ -382,46 +338,40 @@ static int rc_prerequisite()
 }
 
 static int rc_memory_reg()
-{
-    /* Register memory for control data: state & private data */
-    IBDEV->lcl_mr[CTRL_QP] = ibv_reg_mr(IBDEV->rc_pd, SRV_DATA->ctrl_data, sizeof(ctrl_data_t) * CTRL_SIZE, IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_LOCAL_WRITE);
-    if (NULL == IBDEV->lcl_mr[CTRL_QP]) {
-        error_return(1, log_fp, "Cannot register memory because %s\n", strerror(errno));
-    }
-   
+{  
     /* Register memory for local log */    
-    IBDEV->lcl_mr[LOG_QP] = ibv_reg_mr(IBDEV->rc_pd, SRV_DATA->log, sizeof(dare_log_t) + SRV_DATA->log->len, IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_LOCAL_WRITE);
-    if (NULL == IBDEV->lcl_mr[LOG_QP]) {
+    IBDEV->lcl_mr = ibv_reg_mr(IBDEV->rc_pd, SRV_DATA->log, sizeof(dare_log_t) + SRV_DATA->log->len, IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_LOCAL_WRITE);
+    if (NULL == IBDEV->lcl_mr) {
         error_return(1, log_fp, "Cannot register memory because %s\n", strerror(errno));
     }
     
     return 0;
 }
 
-static int rc_qp_reset_to_init(dare_ib_ep_t *ep, int qp_id)
+static int rc_qp_reset_to_init(dare_ib_ep_t *ep)
 {
     int rc;
     struct ibv_qp_attr attr;
 
-    ep->rc_ep.rc_qp[qp_id].send_count = 0;
+    ep->rc_ep.rc_qp.send_count = 0;
 
     memset(&attr, 0, sizeof(attr));
     attr.qp_state        = IBV_QPS_INIT;
     attr.pkey_index      = 0;
     attr.port_num        = IBDEV->port_num;
     attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE | 
-                           IBV_ACCESS_REMOTE_READ |
-                           IBV_ACCESS_REMOTE_ATOMIC |
-                           IBV_ACCESS_LOCAL_WRITE;
+    IBV_ACCESS_REMOTE_READ |
+    IBV_ACCESS_REMOTE_ATOMIC |
+    IBV_ACCESS_LOCAL_WRITE;
 
-    rc = ibv_modify_qp(ep->rc_ep.rc_qp[qp_id].qp, &attr, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS); 
+    rc = ibv_modify_qp(ep->rc_ep.rc_qp.qp, &attr, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS); 
     if (0 != rc) {
         error_return(1, log_fp, "ibv_modify_qp failed because %s\n", strerror(rc));
     }
     return 0;
 }
 
-static int rc_qp_init_to_rtr( dare_ib_ep_t *ep, int qp_id, uint16_t dlid, uint8_t *dgid)
+static int rc_qp_init_to_rtr(dare_ib_ep_t *ep, uint16_t dlid, uint8_t *dgid)
 {
     int rc;
     struct ibv_qp_attr attr;
@@ -432,8 +382,8 @@ static int rc_qp_init_to_rtr( dare_ib_ep_t *ep, int qp_id, uint16_t dlid, uint8_
     attr.path_mtu           = IBDEV->mtu;
     attr.max_dest_rd_atomic = IBDEV->ib_dev_attr.max_qp_rd_atom;
     attr.min_rnr_timer      = 12;
-    attr.dest_qp_num        = ep->rc_ep.rc_qp[qp_id].qpn;
-    attr.rq_psn             = (LOG_QP == qp_id) ? 0 : CTRL_PSN;
+    attr.dest_qp_num        = ep->rc_ep.rc_qp.qpn;
+    attr.rq_psn             = 0;
 
     attr.ah_attr.is_global     = 0;
     attr.ah_attr.dlid          = dlid;
@@ -452,7 +402,7 @@ static int rc_qp_init_to_rtr( dare_ib_ep_t *ep, int qp_id, uint16_t dlid, uint8_
         attr.ah_attr.grh.traffic_class = 0;
     }
 
-    rc = ibv_modify_qp(ep->rc_ep.rc_qp[qp_id].qp, &attr, IBV_QP_STATE | IBV_QP_PATH_MTU | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER | IBV_QP_RQ_PSN | IBV_QP_AV | IBV_QP_DEST_QPN);
+    rc = ibv_modify_qp(ep->rc_ep.rc_qp.qp, &attr, IBV_QP_STATE | IBV_QP_PATH_MTU | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER | IBV_QP_RQ_PSN | IBV_QP_AV | IBV_QP_DEST_QPN);
     if (0 != rc) {
         error_return(1, log_fp, "ibv_modify_qp failed because %s\n", strerror(rc));
     }
@@ -460,7 +410,7 @@ static int rc_qp_init_to_rtr( dare_ib_ep_t *ep, int qp_id, uint16_t dlid, uint8_
     return 0;
 }
 
-static int rc_qp_rtr_to_rts( dare_ib_ep_t *ep, int qp_id )
+static int rc_qp_rtr_to_rts(dare_ib_ep_t *ep)
 {
     int rc;
     struct ibv_qp_attr attr;
@@ -472,20 +422,20 @@ static int rc_qp_rtr_to_rts( dare_ib_ep_t *ep, int qp_id )
     attr.timeout        = 1;    // ~ 8 us
     attr.retry_cnt      = 0;    // max is 7
     attr.rnr_retry      = 7;
-    attr.sq_psn         = (LOG_QP == qp_id) ? 0 : CTRL_PSN;
+    attr.sq_psn         = 0;
     attr.max_rd_atomic = IBDEV->ib_dev_attr.max_qp_rd_atom;
 
-    rc = ibv_modify_qp(ep->rc_ep.rc_qp[qp_id].qp, &attr, 
-                        IBV_QP_STATE | IBV_QP_TIMEOUT |
-                        IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | 
-                        IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
+    rc = ibv_modify_qp(ep->rc_ep.rc_qp.qp, &attr, 
+        IBV_QP_STATE | IBV_QP_TIMEOUT |
+        IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | 
+        IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
     if (0 != rc) {
         error_return(1, log_fp, "ibv_modify_qp failed because %s\n", strerror(rc));
     }
     return 0;
 }
 
-int post_send( uint32_t server_id, int qp_id, void *buf, uint32_t len, struct ibv_mr *mr, enum ibv_wr_opcode opcode, rem_mem_t rm)
+int post_send(uint32_t server_id, void *buf, uint32_t len, struct ibv_mr *mr, enum ibv_wr_opcode opcode, rem_mem_t rm)
 {
     int rc;
     uint32_t *send_count_ptr;
@@ -496,25 +446,24 @@ int post_send( uint32_t server_id, int qp_id, void *buf, uint32_t len, struct ib
 
     /* Define some temporary variables */
     ep = (dare_ib_ep_t*)SRV_DATA->config.servers[server_id].ep;
-    send_count_ptr = &(ep->rc_ep.rc_qp[qp_id].send_count);
+    send_count_ptr = &(ep->rc_ep.rc_qp.send_count);
 
     memset(&sg, 0, sizeof(sg));
     sg.addr   = (uint64_t)buf;
     sg.length = len;
     sg.lkey   = mr->lkey;
- 
+
     memset(&wr, 0, sizeof(wr));
     wr.sg_list    = &sg;
     wr.num_sge    = 1;
     wr.opcode     = opcode;
 
-    uint32_t S_DEPTH_ = IBDEV->rc_max_send_wr / 2 - 1;
     if((*send_count_ptr & S_DEPTH_) == 0) {
         wr.send_flags |= IBV_SEND_SIGNALED; /* Specifying IBV_SEND_SIGNALED in wr.send_flags indicates that we want completion notification for this send request */
     }
     if ((*send_count_ptr & S_DEPTH_) == S_DEPTH_)
     {
-        poll_cq(1, ep->rc_ep.rc_cq[qp_id].cq);
+        poll_cq(1, ep->rc_ep.rc_cq.cq);
     }
 
     if (IBV_WR_RDMA_WRITE == opcode) {
@@ -522,9 +471,10 @@ int post_send( uint32_t server_id, int qp_id, void *buf, uint32_t len, struct ib
             wr.send_flags |= IBV_SEND_INLINE;
         }
     }   
+
     wr.wr.rdma.remote_addr = rm.raddr;
     wr.wr.rdma.rkey        = rm.rkey;
-    rc = ibv_post_send(ep->rc_ep.rc_qp[qp_id].qp, &wr, &bad_wr);
+    rc = ibv_post_send(ep->rc_ep.rc_qp.qp, &wr, &bad_wr);
     if (0 != rc) {
         error_return(1, log_fp, "ibv_post_send failed because %s [%s]\n", 
             strerror(rc), rc == EINVAL ? "EINVAL" : rc == ENOMEM ? "ENOMEM" : rc == EFAULT ? "EFAULT" : "UNKNOWN");

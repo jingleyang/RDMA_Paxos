@@ -60,10 +60,6 @@ static int init_server_data()
     for (i = 0; i < data.config.len; i++) {
         data.config.servers[i].peer_address = data.input->peer_pool[i].peer_address;
     }
- 
-     /* Allocate ctrl_data */
-    data.ctrl_data = (ctrl_data_t*)malloc(sizeof(ctrl_data_t) * CTRL_SIZE);
-    memset(data.ctrl_data, 0, sizeof(ctrl_data_t) * CTRL_SIZE);
 
     /* Set up log */
     data.log = log_new();

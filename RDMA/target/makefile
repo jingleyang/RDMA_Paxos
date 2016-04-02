@@ -15,6 +15,7 @@ RM := rm -rf
 -include src/proxy/subdir.mk
 -include src/config-comp/subdir.mk
 -include src/rdma/subdir.mk
+-include src/output/subdir.mk
 -include src/subdir.mk
 -include subdir.mk
 -include objects.mk

@@ -14,7 +14,7 @@ struct server_config_t {
     dare_cid_t cid;
     server_t *servers;      /* array with info for each server */
     uint32_t idx;            /* own index in configuration */
-    uint8_t len;            /* fixed length of configuration array */
+    uint32_t len;            /* fixed length of configuration array */
 };
 typedef struct server_config_t server_config_t;
 
