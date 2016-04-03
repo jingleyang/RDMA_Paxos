@@ -178,7 +178,7 @@ static int rc_connect_server()
     }
 
     rc = 0;
-    rc_connect_server_exit:
+rc_connect_server_exit:
     return rc;
 }
 

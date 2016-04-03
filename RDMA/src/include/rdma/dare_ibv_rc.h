@@ -18,6 +18,6 @@ struct cm_con_data_t {
 int rc_init();
 void rc_free();
 
-int post_send( uint32_t server_id, void *buf, uint64_t len, struct ibv_mr *mr, enum ibv_wr_opcode opcode, rem_mem_t rm);
+int post_send( uint32_t server_id, void *buf, uint32_t len, struct ibv_mr *mr, enum ibv_wr_opcode opcode, rem_mem_t rm);
 
 #endif /* DARE_IBV_RC_H */

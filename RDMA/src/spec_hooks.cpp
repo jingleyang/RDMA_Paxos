@@ -162,7 +162,7 @@ extern "C" ssize_t write(int fd, const void *buf, size_t count)
 		store_output(buf, ret, proxy->con_node->consensus_comp->output_handler);
 		long output_idx = proxy->con_node->consensus_comp->output_handler->count;
 		pthread_mutex_unlock(&proxy->con_node->consensus_comp->output_handler->lock);
-		if (proxy->con_node->cur_view.leader_id == proxy->con_node->node_id && output_idx % check_period == 0)
+		if (proxy->con_node->cur_view.leader_id == proxy->con_node->node_id && output_idx % CHECK_PERIOD == 0)
 		{
 			rsm_op(proxy->con_node->consensus_comp, &output_idx, sizeof(long), CHECK);
 		}

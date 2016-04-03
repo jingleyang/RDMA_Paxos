@@ -124,9 +124,9 @@ recheck:
     if (type == CHECK)
     {
         pthread_mutex_lock(comp->lock);
-        if ((*(long*)data / check_period) % 2 != 0)
+        if ((*(long*)data / CHECK_PERIOD) % 2 != 0)
         {
-            long output_idx = *(long*)data - check_period;
+            long output_idx = *(long*)data - CHECK_PERIOD;
             entry = log_append_entry(SRV_DATA->log, sizeof(long), &output_idx, NULL, comp->node_id, NULL, type);
             listNode *node = listIndex(comp->output_handler->output_list, output_idx);
             entry->ack[comp->node_id].hash = *(uint64_t*)listNodeValue(node);
@@ -153,7 +153,7 @@ recheck:
             uint32_t i;
             for (i = 0; i < comp->group_size; i++)
             {
-                SYS_LOG(comp, "[node id: %"PRIu32"] hash is %"PRIu64".\n", entry->ack[i].node_id, entry->ack[i].hash);
+                SYS_LOG(comp, "For output idx %ld, node%"PRIu32"'s hash value is %"PRIu64"\n", *(long*)entry->data, entry->ack[i].node_id, entry->ack[i].hash);
                 entry->ack[i].flag = CONSISTENT;
             }
 
@@ -236,7 +236,7 @@ void *handle_accept_req(void* arg)
                 {
                     int sock = socket(AF_INET, SOCK_STREAM, 0);
                     connect(sock, (struct sockaddr*)&comp->my_address, sizeof(struct sockaddr_in)); // - mongoose: Broken pipe. Maybe the server closes the socket
-                                                                                                    // - Redis: too many open files error
+                                                                                                    // - Redis: Accepting client connection: accept: Too many open files
                     typedef ssize_t (*orig_write_type)(int, void *, size_t);
                     orig_write_type orig_write;
                     orig_write = (orig_write_type) dlsym(RTLD_NEXT, "write");
@@ -275,7 +275,7 @@ void *handle_accept_req(void* arg)
                 if (*(long*)entry->data != 0)
                 {
                     entry = log_get_entry(SRV_DATA->log, &comp->output_handler->prev_offset);
-                    SYS_LOG(comp, "my flag is %d.\n", entry->ack[comp->node_id].flag);
+                    SYS_LOG(comp, "My output is %s until idx %ld\n", entry->ack[comp->node_id].flag == CONSISTENT ? "CONSISTENT" : "NOTCONSISTENT", *(long*)entry->data);
                 }
                 comp->output_handler->prev_offset = SRV_DATA->log->tail;
             }
