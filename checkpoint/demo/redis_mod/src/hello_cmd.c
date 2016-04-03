@@ -16,6 +16,7 @@ Steps:
 #include "hiredis.h" //redis c client API
 
 // I add a line to test pull request.^^
+// I add a line to test branch pull request. haha
 
 #define TOTAL_NODE_SIZE 3
 list* roundFilter(list* listHead, uint64_t round){ // The function will return a list of hashvalues of a particular round number.
