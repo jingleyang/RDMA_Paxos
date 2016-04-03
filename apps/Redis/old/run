@@ -9,4 +9,3 @@ cd $RDMA_ROOT/apps/redis/install
 #run slaves 
 ssh $(cat $RDMA_ROOT/apps/env/remote_host1) "$RDMA_ROOT/apps/redis/install/redis-server $RDMA_ROOT/apps/redis/install/redis-slave.conf &" &
 ssh $(cat $RDMA_ROOT/apps/env/remote_host2) "$RDMA_ROOT/apps/redis/install/redis-server $RDMA_ROOT/apps/redis/install/redis-slave.conf &" &
-
