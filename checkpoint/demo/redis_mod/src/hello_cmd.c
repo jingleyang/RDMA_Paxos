@@ -12,9 +12,10 @@ Steps:
 6. make dep V=1 OPTIMIZATION="-O0" MALLOC="libc" 
 7. To implement the function
 */
-
 #include "server.h"
 #include "hiredis.h" //redis c client API
+
+// I add a line to test pull request.^^
 
 #define TOTAL_NODE_SIZE 3
 list* roundFilter(list* listHead, uint64_t round){ // The function will return a list of hashvalues of a particular round number.
